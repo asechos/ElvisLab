@@ -1,6 +1,6 @@
 {
   "appName": "ElvisLab",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {

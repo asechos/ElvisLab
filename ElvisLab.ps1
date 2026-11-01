@@ -2382,6 +2382,150 @@ public class ElvisCardsView : ScrollableControl
         }
     }
 }
+
+public class ElvisToggle : Control
+{
+    private bool isChecked;
+    public event EventHandler CheckedChanged;
+
+    public ElvisToggle()
+    {
+        SetStyle(
+            ControlStyles.UserPaint |
+            ControlStyles.AllPaintingInWmPaint |
+            ControlStyles.OptimizedDoubleBuffer |
+            ControlStyles.ResizeRedraw |
+            ControlStyles.Selectable,
+            true);
+        BackColor = Color.FromArgb(43, 45, 49);
+        ForeColor = Color.FromArgb(227, 229, 232);
+        Cursor = Cursors.Hand;
+        Size = new Size(200, 24);
+    }
+
+    public bool Checked
+    {
+        get { return isChecked; }
+        set
+        {
+            if (isChecked == value) { return; }
+            isChecked = value;
+            Invalidate();
+            if (CheckedChanged != null) { CheckedChanged(this, EventArgs.Empty); }
+        }
+    }
+
+    protected override void OnTextChanged(EventArgs e)
+    {
+        base.OnTextChanged(e);
+        Invalidate();
+    }
+
+    protected override void OnEnabledChanged(EventArgs e)
+    {
+        base.OnEnabledChanged(e);
+        Invalidate();
+    }
+
+    protected override void OnGotFocus(EventArgs e)
+    {
+        base.OnGotFocus(e);
+        Invalidate();
+    }
+
+    protected override void OnLostFocus(EventArgs e)
+    {
+        base.OnLostFocus(e);
+        Invalidate();
+    }
+
+    protected override bool IsInputKey(Keys keyData)
+    {
+        if (keyData == Keys.Space || keyData == Keys.Enter) { return true; }
+        return base.IsInputKey(keyData);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (Enabled && (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter))
+        {
+            Checked = !Checked;
+            e.Handled = true;
+        }
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnMouseClick(MouseEventArgs e)
+    {
+        base.OnMouseClick(e);
+        if (!Enabled) { return; }
+        Checked = !Checked;
+        Focus();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.Clear(BackColor);
+
+        int trackWidth = 36;
+        int trackHeight = 18;
+        int trackX = 2;
+        int trackY = (Height - trackHeight) / 2;
+
+        Color trackColor;
+        if (!Enabled) { trackColor = Color.FromArgb(62, 64, 70); }
+        else if (isChecked) { trackColor = Color.FromArgb(47, 111, 208); }
+        else { trackColor = Color.FromArgb(86, 90, 98); }
+
+        Rectangle track = new Rectangle(trackX, trackY, trackWidth, trackHeight);
+        using (GraphicsPath path = RoundedRect(track, trackHeight / 2))
+        using (SolidBrush brush = new SolidBrush(trackColor))
+        {
+            g.FillPath(brush, path);
+        }
+
+        int knobSize = 14;
+        int knobX = isChecked ? trackX + trackWidth - knobSize - 2 : trackX + 2;
+        int knobY = trackY + (trackHeight - knobSize) / 2;
+        using (SolidBrush brush = new SolidBrush(Enabled ? Color.White : Color.FromArgb(175, 178, 184)))
+        {
+            g.FillEllipse(brush, knobX, knobY, knobSize, knobSize);
+        }
+
+        Color textColor = Enabled ? ForeColor : Color.FromArgb(125, 128, 134);
+        Rectangle textRect = new Rectangle(trackX + trackWidth + 10, 0, Width - (trackX + trackWidth + 10), Height);
+        TextRenderer.DrawText(
+            g,
+            Text,
+            Font,
+            textRect,
+            textColor,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+
+        if (Focused && Enabled)
+        {
+            using (Pen pen = new Pen(Color.FromArgb(90, 169, 230), 1f))
+            {
+                pen.DashStyle = DashStyle.Dot;
+                g.DrawRectangle(pen, textRect.X, 2, textRect.Width - 2, Height - 5);
+            }
+        }
+    }
+
+    private static GraphicsPath RoundedRect(Rectangle rect, int radius)
+    {
+        GraphicsPath path = new GraphicsPath();
+        int d = radius * 2;
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
 '@
 
     $references = @()
@@ -2851,15 +2995,16 @@ function Show-Gui {
             $row.BackColor = $colors.panel
             $row.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
 
-            $check = New-Object System.Windows.Forms.CheckBox
+            $check = New-Object ElvisToggle
             $check.Text = $tweak.name
             $check.Tag = $tweak.id
             $check.Checked = [bool]$tweak.enabled
             $check.Location = New-Object System.Drawing.Point(12, 7)
             $check.Size = New-Object System.Drawing.Size(708, 24)
+            $check.Font = New-Object System.Drawing.Font('Segoe UI', 11)
             $check.ForeColor = $colors.text
             $check.BackColor = $colors.panel
-            $check.FlatStyle = 'Flat'
+            $check.Add_CheckedChanged({ Update-TweakSelectionCount })
             $row.Controls.Add($check)
 
             if ($tweak.description) {
@@ -2867,8 +3012,8 @@ function Show-Gui {
                 $description.Text = $tweak.description
                 $description.ForeColor = $colors.muted
                 $description.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
-                $description.Location = New-Object System.Drawing.Point(34, 30)
-                $description.Size = New-Object System.Drawing.Size(690, 18)
+                $description.Location = New-Object System.Drawing.Point(48, 30)
+                $description.Size = New-Object System.Drawing.Size(676, 18)
                 $row.Controls.Add($description)
             }
 
@@ -2887,16 +3032,26 @@ function Show-Gui {
         $tabTweaks.Controls.Add($lblNoTweaks)
     }
 
+    $flowTweaks.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
+
     $btnApplyTweaks = New-FlatButton -Text 'Ejecutar ajustes marcados' -X 18 -Y 448 -Width 240 -Height 40 -Primary
     $tabTweaks.Controls.Add($btnApplyTweaks)
 
     $btnUndoTweaks = New-FlatButton -Text 'Deshacer seleccionados' -X 270 -Y 448 -Width 220 -Height 40
     $tabTweaks.Controls.Add($btnUndoTweaks)
 
+    $lblTweakCount = New-Object System.Windows.Forms.Label
+    $lblTweakCount.Location = New-Object System.Drawing.Point(18, 492)
+    $lblTweakCount.Size = New-Object System.Drawing.Size(400, 20)
+    $lblTweakCount.ForeColor = $colors.text
+    $lblTweakCount.Font = New-Object System.Drawing.Font('Segoe UI', 11)
+    $lblTweakCount.Text = 'Ajustes seleccionados: 0'
+    $tabTweaks.Controls.Add($lblTweakCount)
+
     $lblTweaksFooter = New-Object System.Windows.Forms.Label
     $lblTweaksFooter.Text = 'Ejecutar ajustes no instala programas. El punto de restauracion se ejecuta primero.'
     $lblTweaksFooter.ForeColor = $colors.muted
-    $lblTweaksFooter.Location = New-Object System.Drawing.Point(18, 496)
+    $lblTweaksFooter.Location = New-Object System.Drawing.Point(18, 514)
     $lblTweaksFooter.Size = New-Object System.Drawing.Size(740, 20)
     $tabTweaks.Controls.Add($lblTweaksFooter)
 
@@ -3356,6 +3511,10 @@ Accesos directos: $(@($Config.shortcuts).Count)
         }
 
         $txtSearch.Enabled = ($Name -eq 'install')
+
+        if ($Name -eq 'tweaks') {
+            $flowTweaks.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
+        }
     }
 
     function Update-BackendUi {
@@ -3411,6 +3570,13 @@ Accesos directos: $(@($Config.shortcuts).Count)
             }
             $script:TweakChecks[$key].Checked = [bool]$checked
         }
+
+        Update-TweakSelectionCount
+    }
+
+    function Update-TweakSelectionCount {
+        $count = @($script:TweakChecks.Values | Where-Object { $_.Checked }).Count
+        $lblTweakCount.Text = "Ajustes seleccionados: $count"
     }
 
     function Start-ElvisJob {
@@ -3491,6 +3657,7 @@ Accesos directos: $(@($Config.shortcuts).Count)
     $cardsView.SetPrograms((Build-ProgramModels -Config $Config -SelectedIds @() -StatusMap $script:ProgramStatus))
     Update-InstallButton
     Update-SidebarSummary
+    Update-TweakSelectionCount
 
     $script:SearchPlaceholder = 'Buscar programas...'
     $txtSearch.Add_GotFocus({
@@ -3948,7 +4115,10 @@ Accesos directos: $(@($Config.shortcuts).Count)
     $lblStatus.Text = 'Listo. Selecciona los programas y pulsa Instalar.'
     Add-UiMessage ('Listo. Configuracion: {0}' -f $ConfigPath) 'INFO'
 
-    $form.Add_Shown({ $form.Activate() })
+    $form.Add_Shown({
+        $form.Activate()
+        $flowTweaks.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
+    })
     [void]$form.ShowDialog()
 }
 
@@ -4056,7 +4226,7 @@ function Invoke-BuildExe {
         title      = $Config.appName
         description = 'Instalador de programas y ajustes para Windows'
         product    = $Config.appName
-        version    = '1.4.0.0'
+        version    = '1.4.1.0'
     }
 
     $iconPath = Join-Path $script:ScriptDir 'Resources\ElvisLab.ico'

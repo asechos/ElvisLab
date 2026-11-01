@@ -110,6 +110,8 @@ La ventana se abre centrada. Si no eres administrador, el script pide elevación
   - **Avanzados**: marca los de la categoría *Avanzados*.
   - **Todo / Limpiar**: marca o desmarca todo.
 - Por defecto solo vienen marcados **punto de restauración** y **telemetría**; el resto se activa manualmente.
+- Cada ajuste tiene un **interruptor**: azul cuando está activo y gris cuando está apagado. Abajo se muestra
+  el contador **Ajustes seleccionados**.
 - **Ejecutar ajustes marcados** aplica la selección sin instalar programas.
 - El punto de restauración se ejecuta primero.
 - **Deshacer seleccionados** revierte los ajustes que lo permitan. Los puntos de restauración no se deshacen desde aquí.
@@ -218,7 +220,7 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 ```json
 {
   "appName": "ElvisLab",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
