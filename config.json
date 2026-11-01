@@ -1,6 +1,6 @@
 {
   "appName": "ElvisLab",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -331,6 +331,32 @@
       "description": "Muestra 'Finalizar tarea' en el menu contextual de la barra de tareas."
     },
     {
+      "id": "mouseacceleration",
+      "name": "Aceleracion del raton - Desactivar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "values": [
+        { "path": "HKCU:\\Control Panel\\Mouse", "valueName": "MouseSpeed", "value": "0", "kind": "String", "undo": { "action": "set", "value": "1", "kind": "String" } },
+        { "path": "HKCU:\\Control Panel\\Mouse", "valueName": "MouseThreshold1", "value": "0", "kind": "String", "undo": { "action": "set", "value": "6", "kind": "String" } },
+        { "path": "HKCU:\\Control Panel\\Mouse", "valueName": "MouseThreshold2", "value": "0", "kind": "String", "undo": { "action": "set", "value": "10", "kind": "String" } }
+      ],
+      "description": "Desactiva la aceleracion del raton. Requiere cerrar sesion."
+    },
+    {
+      "id": "visualeffects",
+      "name": "Efectos visuales - Mejor rendimiento",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects",
+      "valueName": "VisualFXSetting",
+      "value": 2,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Ajusta Windows para mejor rendimiento. Requiere cerrar sesion."
+    },
+    {
       "id": "longpaths",
       "name": "Rutas largas - Activar",
       "type": "registry",
@@ -355,6 +381,45 @@
       "kind": "DWord",
       "undo": { "action": "remove" },
       "description": "Muestra mensajes detallados durante el inicio y cierre de sesion."
+    },
+    {
+      "id": "utc",
+      "name": "Reloj en UTC - Activar",
+      "type": "registry",
+      "category": "Avanzados",
+      "enabled": false,
+      "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\TimeZoneInformation",
+      "valueName": "RealTimeIsUniversal",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Trata el reloj del hardware como UTC. Puede desincronizar el reloj en arranque dual."
+    },
+    {
+      "id": "ipv6prefer",
+      "name": "IPv6 - Preferir IPv4",
+      "type": "registry",
+      "category": "Avanzados",
+      "enabled": false,
+      "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters",
+      "valueName": "DisabledComponents",
+      "value": 32,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Prefiere IPv4 sobre IPv6. Requiere reiniciar. No combinar con 'IPv6 - Desactivar'."
+    },
+    {
+      "id": "ipv6disable",
+      "name": "IPv6 - Desactivar",
+      "type": "registry",
+      "category": "Avanzados",
+      "enabled": false,
+      "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters",
+      "valueName": "DisabledComponents",
+      "value": 255,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Desactiva IPv6 por completo. Puede afectar VPN o redes modernas. Requiere reiniciar. No combinar con 'Preferir IPv4'."
     },
     {
       "id": "hibernation",

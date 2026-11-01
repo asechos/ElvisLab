@@ -1019,6 +1019,205 @@ function Invoke-Tweak {
 }
 
 # ----------------------------------------------------------------------------
+# Operaciones de sistema (DNS, energia, temporales)
+# ----------------------------------------------------------------------------
+
+function Clear-ElvisTempFiles {
+    $targets = @($env:TEMP, (Join-Path $env:SystemRoot 'Temp'))
+    $removed = 0
+    $failed = 0
+
+    foreach ($target in $targets) {
+        if (-not $target -or -not (Test-Path -LiteralPath $target)) { continue }
+        $items = @(Get-ChildItem -LiteralPath $target -Force -ErrorAction SilentlyContinue)
+        foreach ($item in $items) {
+            try {
+                Remove-Item -LiteralPath $item.FullName -Recurse -Force -ErrorAction Stop
+                $removed++
+            } catch {
+                $failed++
+            }
+        }
+    }
+
+    Write-LogLine ("Temporales: {0} elemento(s) eliminados, {1} en uso/omitidos." -f $removed, $failed) 'OK'
+    return [pscustomobject]@{
+        Removed = $removed
+        Failed  = $failed
+    }
+}
+
+function Get-ElvisDnsServers {
+    param([string]$Provider)
+
+    switch ($Provider) {
+        'google' { return @('8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844') }
+        'cloudflare' { return @('1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001') }
+        'cloudflare-malware' { return @('1.1.1.2', '1.0.0.2', '2606:4700:4700::1112', '2606:4700:4700::1002') }
+        'quad9' { return @('9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9') }
+        'adguard' { return @('94.140.14.14', '94.140.15.15', '2a10:50c0::ad1:ff', '2a10:50c0::ad2:ff') }
+        'dhcp' { return @() }
+        default { return @() }
+    }
+}
+
+function Set-ElvisDns {
+    param([string]$Provider)
+
+    $adapters = @(Get-NetAdapter -Physical -ErrorAction Stop | Where-Object {
+        $_.Status -eq 'Up' -and
+        $_.InterfaceDescription -notmatch '(?i)Npcap|Loopback|Virtual|Hyper-V|VMware|VPN|TAP|WireGuard|OpenVPN|Tailscale|ZeroTier'
+    })
+
+    if ($adapters.Count -eq 0) {
+        throw 'No se encontraron adaptadores fisicos activos.'
+    }
+
+    $servers = @(Get-ElvisDnsServers -Provider $Provider)
+    $applied = 0
+
+    foreach ($adapter in $adapters) {
+        if ($servers.Count -eq 0) {
+            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ResetServerAddresses -ErrorAction Stop
+            Write-LogLine ("DNS restablecido a DHCP en '{0}'." -f $adapter.Name) 'OK'
+        } else {
+            Set-DnsClientServerAddress -InterfaceIndex $adapter.ifIndex -ServerAddresses $servers -ErrorAction Stop
+            Write-LogLine ("DNS '{0}' aplicado en '{1}'." -f $Provider, $adapter.Name) 'OK'
+        }
+        $applied++
+    }
+
+    try { $null = (& ipconfig.exe /flushdns 2>&1 | Out-String) } catch { }
+    return $applied
+}
+
+function Get-PowerPlans {
+    $output = (& powercfg.exe /list 2>&1 | Out-String)
+    $plans = @()
+
+    foreach ($line in ($output -split "`r?`n")) {
+        $match = [regex]::Match($line, '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+\((.*?)\)')
+        if ($match.Success) {
+            $plans += [pscustomobject]@{
+                Guid = $match.Groups[1].Value.ToLowerInvariant()
+                Name = $match.Groups[2].Value.Trim()
+            }
+        }
+    }
+
+    return $plans
+}
+
+function Get-UltimatePlanStatePath {
+    $dir = Join-Path $env:LOCALAPPDATA 'ElvisLab'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    return (Join-Path $dir 'ultimate-plan.txt')
+}
+
+function Test-UltimatePlanName {
+    param([string]$Name)
+    return ($Name -match '(?i)ultimate performance|rendimiento m[aá]ximo|m[aá]ximo rendimiento')
+}
+
+function Enable-UltimatePerformance {
+    $template = 'e9a42b02-d5df-448d-aa00-03f14749eb61'
+    $statePath = Get-UltimatePlanStatePath
+    $plans = @(Get-PowerPlans)
+    $plan = $null
+
+    if (Test-Path -LiteralPath $statePath) {
+        $savedGuid = (Get-Content -LiteralPath $statePath -Raw).Trim()
+        if ($savedGuid -match '^[0-9a-fA-F-]{36}$') {
+            $plan = @($plans | Where-Object { $_.Guid -eq $savedGuid.ToLowerInvariant() }) | Select-Object -First 1
+        }
+    }
+
+    if (-not $plan) {
+        $plan = @($plans | Where-Object { Test-UltimatePlanName -Name $_.Name }) | Select-Object -First 1
+    }
+
+    if (-not $plan) {
+        $beforeGuids = @($plans | ForEach-Object { $_.Guid })
+        $output = (& powercfg.exe -duplicatescheme $template 2>&1 | Out-String)
+        if ($LASTEXITCODE -ne 0) {
+            throw ("powercfg -duplicatescheme fallo (codigo {0}): {1}" -f $LASTEXITCODE, $output.Trim())
+        }
+
+        $plans = @(Get-PowerPlans)
+        $plan = @($plans | Where-Object { $_.Guid -notin $beforeGuids }) | Select-Object -First 1
+
+        if (-not $plan) {
+            $guids = @([regex]::Matches($output, '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') | ForEach-Object { $_.Value.ToLowerInvariant() })
+            if ($guids.Count -gt 0) {
+                $plan = [pscustomobject]@{ Guid = $guids[$guids.Count - 1]; Name = 'Ultimate Performance' }
+            }
+        }
+
+        if (-not $plan) {
+            $plan = @($plans | Where-Object { Test-UltimatePlanName -Name $_.Name }) | Select-Object -First 1
+        }
+    }
+
+    if (-not $plan) {
+        throw 'No se pudo identificar el plan Ultimate Performance.'
+    }
+
+    $null = (& powercfg.exe -setactive $plan.Guid 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        throw ("powercfg -setactive fallo (codigo {0})." -f $LASTEXITCODE)
+    }
+
+    Set-Content -LiteralPath $statePath -Value $plan.Guid -Encoding ASCII
+    Write-LogLine ("Plan Ultimate Performance activado ({0})." -f $plan.Guid) 'OK'
+    return $plan.Guid
+}
+
+function Disable-UltimatePerformance {
+    $statePath = Get-UltimatePlanStatePath
+    $plans = @(Get-PowerPlans)
+    $targetGuids = @()
+
+    if (Test-Path -LiteralPath $statePath) {
+        $savedGuid = (Get-Content -LiteralPath $statePath -Raw).Trim()
+        if ($savedGuid -match '^[0-9a-fA-F-]{36}$') {
+            $known = @($plans | Where-Object { $_.Guid -eq $savedGuid.ToLowerInvariant() })
+            if ($known.Count -gt 0) { $targetGuids += $savedGuid.ToLowerInvariant() }
+        }
+    }
+    foreach ($plan in @($plans | Where-Object { Test-UltimatePlanName -Name $_.Name })) {
+        $targetGuids += $plan.Guid
+    }
+    $targetGuids = @($targetGuids | Select-Object -Unique)
+
+    if ($targetGuids.Count -eq 0) {
+        Write-LogLine 'No hay planes Ultimate Performance que quitar.' 'WARN'
+        Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+        return 0
+    }
+
+    $balanced = '381b4222-f694-41f0-9685-ff5bb260df2e'
+    $null = (& powercfg.exe -setactive $balanced 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        throw ("No se pudo activar el plan Equilibrado (codigo {0})." -f $LASTEXITCODE)
+    }
+
+    $deleted = 0
+    foreach ($guid in $targetGuids) {
+        $null = (& powercfg.exe -delete $guid 2>&1 | Out-String)
+        if ($LASTEXITCODE -eq 0) {
+            $deleted++
+            Write-LogLine ("Plan eliminado: {0}." -f $guid) 'OK'
+        } else {
+            Write-LogLine ("No se pudo eliminar el plan {0} (codigo {1})." -f $guid, $LASTEXITCODE) 'WARN'
+        }
+    }
+
+    Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+    Write-LogLine ("Planes Ultimate Performance eliminados: {0}." -f $deleted) 'OK'
+    return $deleted
+}
+
+# ----------------------------------------------------------------------------
 # Accesos directos
 # ----------------------------------------------------------------------------
 
@@ -2511,6 +2710,7 @@ function Show-Gui {
     $tabLog = $tabPanels['log']
     $tabConfig = $tabPanels['config']
     $tabTweaks.AutoScroll = $true
+    $tabConfig.AutoScroll = $true
 
     # Pestana Instalar
     $cardsView = New-Object ElvisCardsView
@@ -2794,15 +2994,70 @@ Accesos directos: $(@($Config.shortcuts).Count)
 
     $btnResetNetwork = New-FlatButton -Text 'Reset de red' -X 24 -Y 426 -Width 230
     $btnScanCorruption = New-FlatButton -Text 'Escanear corrupcion' -X 264 -Y 426 -Width 230
+    $btnCleanTempWindows = New-FlatButton -Text 'Limpiar temporales' -X 504 -Y 426 -Width 230
     $tabConfig.Controls.Add($btnResetNetwork)
     $tabConfig.Controls.Add($btnScanCorruption)
+    $tabConfig.Controls.Add($btnCleanTempWindows)
+
+    $lblConfigEnergy = New-Object System.Windows.Forms.Label
+    $lblConfigEnergy.Text = 'ENERGIA'
+    $lblConfigEnergy.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+    $lblConfigEnergy.ForeColor = [System.Drawing.Color]::FromArgb(127, 131, 138)
+    $lblConfigEnergy.Location = New-Object System.Drawing.Point(24, 474)
+    $lblConfigEnergy.Size = New-Object System.Drawing.Size(400, 18)
+    $tabConfig.Controls.Add($lblConfigEnergy)
+
+    $btnUltimateOn = New-FlatButton -Text 'Ultimate Performance' -X 24 -Y 496 -Width 230
+    $btnUltimateOff = New-FlatButton -Text 'Quitar plan' -X 264 -Y 496 -Width 150
+    $tabConfig.Controls.Add($btnUltimateOn)
+    $tabConfig.Controls.Add($btnUltimateOff)
+
+    $lblConfigNetwork = New-Object System.Windows.Forms.Label
+    $lblConfigNetwork.Text = 'RED / DNS'
+    $lblConfigNetwork.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+    $lblConfigNetwork.ForeColor = [System.Drawing.Color]::FromArgb(127, 131, 138)
+    $lblConfigNetwork.Location = New-Object System.Drawing.Point(24, 542)
+    $lblConfigNetwork.Size = New-Object System.Drawing.Size(400, 18)
+    $tabConfig.Controls.Add($lblConfigNetwork)
+
+    $lblDns = New-Object System.Windows.Forms.Label
+    $lblDns.Text = 'DNS'
+    $lblDns.ForeColor = $colors.text
+    $lblDns.Location = New-Object System.Drawing.Point(24, 570)
+    $lblDns.Size = New-Object System.Drawing.Size(40, 20)
+    $tabConfig.Controls.Add($lblDns)
+
+    $cmbDns = New-Object System.Windows.Forms.ComboBox
+    $cmbDns.Location = New-Object System.Drawing.Point(70, 566)
+    $cmbDns.Size = New-Object System.Drawing.Size(220, 26)
+    $cmbDns.DropDownStyle = 'DropDownList'
+    $cmbDns.FlatStyle = 'Flat'
+    $cmbDns.BackColor = $colors.panel
+    $cmbDns.ForeColor = $colors.text
+    foreach ($item in @('Predeterminado (DHCP)', 'Google', 'Cloudflare', 'Cloudflare (malware)', 'Quad9', 'AdGuard')) {
+        $cmbDns.Items.Add($item) | Out-Null
+    }
+    $cmbDns.SelectedIndex = 0
+    $tabConfig.Controls.Add($cmbDns)
+
+    $btnApplyDns = New-FlatButton -Text 'Aplicar DNS' -X 300 -Y 564 -Width 110 -Height 30
+    $btnDnsDhcp = New-FlatButton -Text 'Restablecer DHCP' -X 418 -Y 564 -Width 140 -Height 30
+    $tabConfig.Controls.Add($btnApplyDns)
+    $tabConfig.Controls.Add($btnDnsDhcp)
 
     $lblConfigNote = New-Object System.Windows.Forms.Label
-    $lblConfigNote.Text = 'SFC + DISM abre una consola aparte y puede tardar varios minutos. El reset de red requiere reiniciar.'
+    $lblConfigNote.Text = 'DNS se aplica a los adaptadores fisicos activos. Ultimate Performance no se recomienda en laptops.'
     $lblConfigNote.ForeColor = $colors.muted
-    $lblConfigNote.Location = New-Object System.Drawing.Point(24, 470)
-    $lblConfigNote.Size = New-Object System.Drawing.Size(740, 40)
+    $lblConfigNote.Location = New-Object System.Drawing.Point(24, 604)
+    $lblConfigNote.Size = New-Object System.Drawing.Size(740, 20)
     $tabConfig.Controls.Add($lblConfigNote)
+
+    $configTip = New-Object System.Windows.Forms.ToolTip
+    $configTip.SetToolTip($btnScanCorruption, 'SFC + DISM abre una consola aparte y puede tardar varios minutos.')
+    $configTip.SetToolTip($btnResetNetwork, 'Restablece la pila IP y Winsock. Requiere reiniciar.')
+    $configTip.SetToolTip($btnCleanTempWindows, 'Elimina archivos temporales del usuario y del sistema.')
+    $configTip.SetToolTip($btnUltimateOn, 'Activa el plan de energia Ultimate Performance. No recomendado para laptops.')
+    $configTip.SetToolTip($cmbDns, 'Cambia el DNS de todos los adaptadores fisicos activos.')
 
     # --- Botones laterales ---------------------------------------------------
     $lblActions = New-Object System.Windows.Forms.Label
@@ -2847,7 +3102,7 @@ Accesos directos: $(@($Config.shortcuts).Count)
     $btnUninstall = New-SidebarButton -Text 'Desinstalar' -Y 78
     $btnUpgradeAll = New-SidebarButton -Text 'Actualizar instalados' -Y 114
     $btnShortcuts = New-SidebarButton -Text 'Crear accesos directos' -Y 150
-    $btnClean = New-SidebarButton -Text 'Limpiar temporal' -Y 186
+    $btnClean = New-SidebarButton -Text 'Limpiar descargas' -Y 186
     $btnLog = New-SidebarButton -Text 'Abrir registro' -Y 222
 
     $lblSelection = New-Object System.Windows.Forms.Label
@@ -3059,6 +3314,12 @@ Accesos directos: $(@($Config.shortcuts).Count)
         $btnRepairWinget.Enabled = (-not $Running) -and $wingetOk
         $btnResetNetwork.Enabled = -not $Running
         $btnScanCorruption.Enabled = -not $Running
+        $btnCleanTempWindows.Enabled = -not $Running
+        $btnUltimateOn.Enabled = -not $Running
+        $btnUltimateOff.Enabled = -not $Running
+        $btnApplyDns.Enabled = -not $Running
+        $btnDnsDhcp.Enabled = -not $Running
+        $cmbDns.Enabled = -not $Running
         $btnBackendWinget.Enabled = (-not $Running) -and $wingetOk
         $btnBackendDirect.Enabled = -not $Running
         $cardsView.Enabled = -not $Running
@@ -3473,7 +3734,7 @@ Accesos directos: $(@($Config.shortcuts).Count)
         try {
             Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-            Add-UiMessage 'Carpeta temporal limpiada. Los accesos directos no dependen de ella.' 'OK'
+            Add-UiMessage 'Descargas temporales de ElvisLab limpiadas. Los accesos directos no dependen de ellas.' 'OK'
         } catch {
             Add-UiMessage "No se pudo limpiar la carpeta temporal: $($_.Exception.Message)" 'ERROR'
         }
@@ -3583,6 +3844,79 @@ Accesos directos: $(@($Config.shortcuts).Count)
         }
     })
 
+    $btnCleanTempWindows.Add_Click({
+        $answer = [System.Windows.Forms.MessageBox]::Show('Se eliminaran archivos temporales del usuario y del sistema. Algunos archivos en uso se omitiran. Continuar?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        try {
+            $result = Clear-ElvisTempFiles
+            Add-UiMessage ("Temporales: {0} eliminado(s), {1} en uso/omitido(s)." -f $result.Removed, $result.Failed) $(if ($result.Failed -gt 0) { 'WARN' } else { 'OK' })
+        } catch {
+            Add-UiMessage "No se pudieron limpiar los temporales: $($_.Exception.Message)" 'ERROR'
+        }
+    })
+
+    $btnUltimateOn.Add_Click({
+        $answer = [System.Windows.Forms.MessageBox]::Show('Ultimate Performance esta pensado para equipos de escritorio; no se recomienda en laptops. Deseas activarlo?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        try {
+            $guid = Enable-UltimatePerformance
+            Add-UiMessage ("Plan Ultimate Performance activado ({0})." -f $guid) 'OK'
+        } catch {
+            Add-UiMessage "No se pudo activar Ultimate Performance: $($_.Exception.Message)" 'ERROR'
+        }
+    })
+
+    $btnUltimateOff.Add_Click({
+        $answer = [System.Windows.Forms.MessageBox]::Show('Se activara el plan Equilibrado y se eliminaran los planes Ultimate Performance. Continuar?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        try {
+            $count = Disable-UltimatePerformance
+            Add-UiMessage ("Planes Ultimate Performance eliminados: {0}." -f $count) 'OK'
+        } catch {
+            Add-UiMessage "No se pudo quitar Ultimate Performance: $($_.Exception.Message)" 'ERROR'
+        }
+    })
+
+    $dnsMap = @{
+        'Predeterminado (DHCP)' = 'dhcp'
+        'Google' = 'google'
+        'Cloudflare' = 'cloudflare'
+        'Cloudflare (malware)' = 'cloudflare-malware'
+        'Quad9' = 'quad9'
+        'AdGuard' = 'adguard'
+    }
+
+    $btnApplyDns.Add_Click({
+        $selected = [string]$cmbDns.SelectedItem
+        $provider = $dnsMap[$selected]
+        if (-not $provider) { $provider = 'dhcp' }
+
+        $answer = [System.Windows.Forms.MessageBox]::Show(("Se cambiara el DNS a '{0}' en todos los adaptadores fisicos activos. Continuar?" -f $selected), 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        try {
+            $count = Set-ElvisDns -Provider $provider
+            Add-UiMessage ("DNS '{0}' aplicado en {1} adaptador(es)." -f $selected, $count) 'OK'
+        } catch {
+            Add-UiMessage "No se pudo aplicar el DNS: $($_.Exception.Message)" 'ERROR'
+        }
+    })
+
+    $btnDnsDhcp.Add_Click({
+        $answer = [System.Windows.Forms.MessageBox]::Show('Se restablecera el DNS a DHCP en todos los adaptadores fisicos activos. Continuar?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        try {
+            $count = Set-ElvisDns -Provider 'dhcp'
+            Add-UiMessage ("DNS restablecido a DHCP en {0} adaptador(es)." -f $count) 'OK'
+        } catch {
+            Add-UiMessage "No se pudo restablecer el DNS: $($_.Exception.Message)" 'ERROR'
+        }
+    })
+
     $btnBackendDirect.Add_Click({ Set-UiBackend -Name 'direct' })
     $btnBackendWinget.Add_Click({ Set-UiBackend -Name 'winget' })
 
@@ -3645,6 +3979,9 @@ function Invoke-SelfTest {
         try { $wingetVersionText = ((& winget --version 2>&1 | Out-String).Trim()) } catch { }
     }
     Write-LogLine ("winget disponible: {0} {1}" -f $wingetOk, $wingetVersionText) 'INFO'
+
+    $powerPlans = @(Get-PowerPlans)
+    Write-LogLine ("Planes de energia detectados: {0}" -f $powerPlans.Count) 'INFO'
 
     foreach ($file in @($Config.files)) {
         $http = 'sin comprobar'
@@ -3719,7 +4056,7 @@ function Invoke-BuildExe {
         title      = $Config.appName
         description = 'Instalador de programas y ajustes para Windows'
         product    = $Config.appName
-        version    = '1.3.0.0'
+        version    = '1.4.0.0'
     }
 
     $iconPath = Join-Path $script:ScriptDir 'Resources\ElvisLab.ico'

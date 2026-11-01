@@ -20,7 +20,9 @@ categoría, búsqueda y barra de progreso.
 - **Desinstalar** programas con winget (solo los que winget reconozca).
 - **Crear accesos directos** en el Escritorio o menú Inicio, apuntando al programa realmente instalado.
 - **Herramientas**: panel de control clásico, conexiones de red, sonido, impresoras, programas y características,
-  reset de red, reparación de winget y escaneo SFC + DISM.
+  reset de red, reparación de winget, limpieza de temporales y escaneo SFC + DISM.
+- **Red**: cambia el DNS de todos los adaptadores físicos activos (Google, Cloudflare, Quad9, AdGuard o DHCP).
+- **Energía**: activa o elimina el plan **Ultimate Performance**.
 - **Registro** en pantalla y en archivo, con progreso por programa.
 - **Modo desatendido** (`-Headless`) y **autotest** (`-SelfTest`).
 
@@ -86,7 +88,7 @@ La ventana se abre centrada. Si no eres administrador, el script pide elevación
 - **Desinstalar**: desinstala con winget los programas seleccionados (pide confirmación).
 - **Actualizar instalados**: actualiza con winget los programas gestionados que estén instalados.
 - **Crear accesos directos**: crea los `.lnk` definidos en `config.json`.
-- **Limpiar temporal**: borra descargas y archivos temporales. Los accesos ya no dependen de esa carpeta.
+- **Limpiar descargas**: borra descargas y archivos temporales de ElvisLab. Los accesos ya no dependen de esa carpeta.
 - **Abrir registro**: abre el archivo `.log` en Notepad.
 - **Seleccionar todo / Quitar selección**.
 - **Expandir / Contraer categorías**.
@@ -117,13 +119,15 @@ Tweaks incluidos:
 | Categoría | Tweaks |
 | --- | --- |
 | Esenciales | Punto de restauración, telemetría, historial de actividad, ubicación, características de consumidor, optimización de entrega, widgets, apps en segundo plano, búsqueda web en Inicio. |
-| Interfaz | Tema oscuro, extensiones de archivo, archivos ocultos, iconos centrados, modo juego, finalizar tarea con clic derecho. |
-| Avanzados | Rutas largas, inicio de sesión detallado, hibernación, servicio DiagTrack, informes de errores (WerSvc). |
+| Interfaz | Tema oscuro, extensiones de archivo, archivos ocultos, iconos centrados, modo juego, finalizar tarea con clic derecho, desactivar aceleración del ratón, efectos visuales para mejor rendimiento. |
+| Avanzados | Rutas largas, inicio de sesión detallado, reloj en UTC, preferir IPv4, desactivar IPv6, hibernación, servicio DiagTrack, informes de errores (WerSvc). |
 
 Notas:
 
-- **Rutas largas** requiere reiniciar.
+- **Rutas largas**, **UTC**, **IPv6** y **hibernación** requieren reiniciar.
 - **Hibernación** desactiva también el inicio rápido.
+- **IPv6 - Preferir IPv4** e **IPv6 - Desactivar** son excluyentes; no marques ambas.
+- **Reloj en UTC** puede desincronizar el reloj en equipos con arranque dual.
 - Los tweaks de servicios detienen el servicio y cambian su tipo de inicio; se pueden restaurar con **Deshacer**.
 - Los tweaks de registro se aplican en `HKLM` o `HKCU` según corresponda.
 
@@ -141,6 +145,11 @@ Notas:
 - Herramientas clásicas de Windows y reparaciones.
 - **SFC + DISM** abre una consola aparte y puede tardar mucho.
 - **Reset de red** requiere reiniciar el equipo.
+- **Limpiar temporales** elimina archivos temporales del usuario y del sistema; los que estén en uso se omiten.
+- **DNS**: elige Google, Cloudflare, Cloudflare (malware), Quad9, AdGuard o DHCP y pulsa **Aplicar DNS**.
+  Se aplica a todos los adaptadores físicos activos y se vacía la caché DNS.
+- **Energía**: **Ultimate Performance** activa el plan; **Quitar plan** vuelve a Equilibrado y elimina los planes
+  Ultimate Performance. No se recomienda en laptops.
 
 ### Cancelar
 
@@ -209,7 +218,7 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 ```json
 {
   "appName": "ElvisLab",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -421,7 +430,7 @@ en la misma carpeta y no está firmado.
 - La desinstalación depende de que winget reconozca el programa.
 - El motor Directo usa versiones fijadas; no busca automáticamente la última versión.
 - Solo se incluyen 5 programas; añade más en `config.json`.
-- Los tweaks son un subconjunto curado de WinUtil: no se incluyen eliminación de Edge/OneDrive, DNS, planes de energía, AppX ni limpieza de disco.
+- Los tweaks son un subconjunto curado de WinUtil: no se incluyen eliminación de Edge/OneDrive, AppX, Windows AI, Storage Sense, servicios masivos ni BitLocker.
 
 ---
 
