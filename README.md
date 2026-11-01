@@ -44,7 +44,8 @@ categoría, búsqueda y barra de progreso.
 ```
 ElvisLab\
 │   ElvisLab.ps1        Lanzador: parametros, carga de modulos y arranque
-│   ElvisLab.exe        Compilado autocontenido (opcional, sin firmar)
+│   ElvisLab.exe        Compilado (modulos empaquetados, sin firmar)
+│   ElvisLab.exe.config DPI PerMonitorV2 generado por ps2exe
 │   config.json         Programas, accesos y ajustes
 │   README.md
 ├─ modules\
@@ -65,7 +66,8 @@ ElvisLab\
 ```
 
 El `.ps1` carga los modulos desde `modules\`. Al compilar con `-Build`, los modulos se concatenan
-en un bundle temporal y el `.exe` resultante es autocontenido: no necesita la carpeta `modules\`.
+en un bundle temporal y el `.exe` resultante no necesita la carpeta `modules\`. Si necesita
+`config.json` y, para el escalado DPI PerMonitorV2, `ElvisLab.exe.config` junto al ejecutable.
 
 Los iconos son opcionales. Si un programa está instalado, la tarjeta usa el icono real del ejecutable.
 También puedes indicar un `.ico` o `.png` en el campo `icon` de cada programa.
@@ -90,6 +92,16 @@ La ventana se abre centrada. Si no eres administrador, el script pide elevación
 ---
 
 ## Interfaz
+
+### Ventana y escalado
+
+- La ventana es **redimensionable** y maximizable.
+- Tamaño inicial: **1180×740** (cliente), recortado automáticamente al área de trabajo.
+- Tamaño mínimo: **1000×640** (cliente), equivalente a 1016×679 con bordes.
+- Las tarjetas pasan de **4 a 6 columnas** según el ancho.
+- El registro y las listas se estiran con la ventana.
+- La barra superior, la barra de estado y el resumen lateral se anclan a los bordes.
+- Soporte de DPI: `AutoScaleMode = Font`, geometría de tarjetas escalada por DPI y `.exe` compilado con DPI awareness.
 
 ### Barra superior
 
@@ -237,7 +249,7 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 ```json
 {
   "appName": "ElvisLab",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -420,8 +432,8 @@ Install-Module ps2exe -Scope CurrentUser -Force   # una sola vez
 ```
 
 El `.exe` incluye el manifiesto de Administrador y no muestra consola. Se genera a partir de un bundle
-de `modules\`, así que es autocontenido y no necesita la carpeta `modules`. Sigue necesitando `config.json`
-en la misma carpeta y no está firmado.
+de `modules\`, así que no necesita la carpeta `modules`. ps2exe genera además `ElvisLab.exe.config`
+para PerMonitorV2; mantenlo junto al `.exe`. Sigue necesitando `config.json` y no está firmado.
 
 ---
 
@@ -459,4 +471,5 @@ en la misma carpeta y no está firmado.
 - `ElvisLab.ps1`: lanzador; define parámetros, carga `modules\` y ejecuta el arranque.
 - `modules\`: código separado por responsabilidad.
 - `config.json`: catálogo y ajustes.
-- `ElvisLab.exe`: compilado autocontenido (los módulos se empaquetan dentro).
+- `ElvisLab.exe`: compilado con los módulos empaquetados.
+- `ElvisLab.exe.config`: configuración DPI PerMonitorV2 generada por ps2exe.

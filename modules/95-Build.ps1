@@ -72,10 +72,12 @@ function Invoke-BuildExe {
         requireAdmin = $true
         STA        = $true
         x64        = $true
+        DPIAware   = $true
+        winFormsDPIAware = $true
         title      = $Config.appName
         description = 'Instalador de programas y ajustes para Windows'
         product    = $Config.appName
-        version    = '1.5.0.0'
+        version    = '1.6.0.0'
     }
 
     $iconPath = Join-Path $script:ScriptDir 'Resources\ElvisLab.ico'

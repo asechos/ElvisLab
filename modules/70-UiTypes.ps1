@@ -182,12 +182,17 @@ public class ElvisCardsView : ScrollableControl
         cardRects.Clear();
         headerRects.Clear();
 
-        int pad = 18;
-        int cardW = 180;
-        int cardH = 50;
-        int gap = 10;
-        int headerH = 34;
-        int sectionGap = 14;
+        float scale = 1f;
+        try { using (Graphics graphics = CreateGraphics()) { scale = graphics.DpiX / 96f; } } catch { }
+        if (scale <= 0f || float.IsNaN(scale)) { scale = 1f; }
+
+        int pad = (int)Math.Round(18 * scale);
+        int cardW = (int)Math.Round(180 * scale);
+        int cardH = (int)Math.Round(50 * scale);
+        int gap = (int)Math.Round(10 * scale);
+        int headerH = (int)Math.Round(34 * scale);
+        int headerRectH = (int)Math.Round(28 * scale);
+        int sectionGap = (int)Math.Round(14 * scale);
 
         int available = ClientSize.Width - (pad * 2);
         int columns = Math.Max(1, (available + gap) / (cardW + gap));
@@ -195,7 +200,7 @@ public class ElvisCardsView : ScrollableControl
 
         foreach (var group in programs.Where(p => Matches(p)).GroupBy(p => CategoryOf(p)))
         {
-            headerRects[group.Key] = new Rectangle(pad, y, available, 28);
+            headerRects[group.Key] = new Rectangle(pad, y, available, headerRectH);
             y += headerH;
 
             if (!collapsed.Contains(group.Key))
@@ -252,38 +257,40 @@ public class ElvisCardsView : ScrollableControl
     {
         bool isCollapsed = collapsed.Contains(text);
         Color accent = Color.FromArgb(90, 169, 230);
+        float scale = rect.Height / 28f;
 
         using (SolidBrush brush = new SolidBrush(accent))
         {
-            g.DrawString(text, headerFont, brush, rect.X, rect.Y + 2);
+            g.DrawString(text, headerFont, brush, (float)rect.X, (float)(rect.Y + (2 * scale)));
         }
 
         SizeF size = g.MeasureString(text, headerFont);
-        int lineX = rect.X + (int)size.Width + 10;
+        int lineX = rect.X + (int)Math.Round(size.Width) + (int)Math.Round(10 * scale);
         using (Pen pen = new Pen(Color.FromArgb(58, 60, 65)))
         {
-            g.DrawLine(pen, lineX, rect.Y + 14, rect.Right - 24, rect.Y + 14);
+            int lineY = rect.Y + (int)Math.Round(14 * scale);
+            g.DrawLine(pen, lineX, lineY, rect.Right - (int)Math.Round(24 * scale), lineY);
         }
 
-        using (Pen pen = new Pen(Color.FromArgb(140, 143, 148), 1.6f))
+        using (Pen pen = new Pen(Color.FromArgb(140, 143, 148), 1.6f * scale))
         {
             PointF[] points;
             if (isCollapsed)
             {
                 points = new PointF[]
                 {
-                    new PointF(rect.Right - 17, rect.Y + 7),
-                    new PointF(rect.Right - 11, rect.Y + 13),
-                    new PointF(rect.Right - 17, rect.Y + 19)
+                    new PointF(rect.Right - (17 * scale), rect.Y + (7 * scale)),
+                    new PointF(rect.Right - (11 * scale), rect.Y + (13 * scale)),
+                    new PointF(rect.Right - (17 * scale), rect.Y + (19 * scale))
                 };
             }
             else
             {
                 points = new PointF[]
                 {
-                    new PointF(rect.Right - 20, rect.Y + 9),
-                    new PointF(rect.Right - 13, rect.Y + 16),
-                    new PointF(rect.Right - 6, rect.Y + 9)
+                    new PointF(rect.Right - (20 * scale), rect.Y + (9 * scale)),
+                    new PointF(rect.Right - (13 * scale), rect.Y + (16 * scale)),
+                    new PointF(rect.Right - (6 * scale), rect.Y + (9 * scale))
                 };
             }
             g.DrawLines(pen, points);
@@ -293,32 +300,36 @@ public class ElvisCardsView : ScrollableControl
     private void DrawCard(Graphics g, ElvisProgram program, Rectangle rect)
     {
         bool hover = string.Equals(hoverCard, program.Id, StringComparison.OrdinalIgnoreCase);
+        float scale = rect.Height / 50f;
+        if (scale <= 0f || float.IsNaN(scale)) { scale = 1f; }
 
         Color background = hover ? Color.FromArgb(53, 55, 60) : Color.FromArgb(43, 45, 49);
         Color border = program.Selected
             ? Color.FromArgb(59, 165, 93)
             : (hover ? Color.FromArgb(74, 76, 82) : Color.FromArgb(58, 59, 64));
 
-        using (GraphicsPath path = RoundedRect(rect, 6))
+        using (GraphicsPath path = RoundedRect(rect, (int)Math.Round(6 * scale)))
         {
             using (SolidBrush brush = new SolidBrush(background))
             {
                 g.FillPath(brush, path);
             }
-            using (Pen pen = new Pen(border, program.Selected ? 1.6f : 1f))
+            using (Pen pen = new Pen(border, (program.Selected ? 1.6f : 1f) * scale))
             {
                 g.DrawPath(pen, path);
             }
         }
 
-        Rectangle badge = new Rectangle(rect.X + 8, rect.Y + ((rect.Height - 30) / 2), 30, 30);
+        int badgeSize = (int)Math.Round(30 * scale);
+        int badgeX = rect.X + (int)Math.Round(8 * scale);
+        Rectangle badge = new Rectangle(badgeX, rect.Y + ((rect.Height - badgeSize) / 2), badgeSize, badgeSize);
         if (program.Icon != null)
         {
             g.DrawImage(program.Icon, badge);
         }
         else
         {
-            using (GraphicsPath path = RoundedRect(badge, 5))
+            using (GraphicsPath path = RoundedRect(badge, (int)Math.Round(5 * scale)))
             {
                 using (SolidBrush brush = new SolidBrush(program.BadgeColor))
                 {
@@ -335,10 +346,14 @@ public class ElvisCardsView : ScrollableControl
             }
         }
 
-        int textX = rect.X + 46;
-        int textRight = rect.Right - 28;
+        int textX = rect.X + (int)Math.Round(46 * scale);
+        int textRight = rect.Right - (int)Math.Round(28 * scale);
 
-        Rectangle titleRect = new Rectangle(textX, rect.Y + 5, textRight - textX, 22);
+        Rectangle titleRect = new Rectangle(
+            textX,
+            rect.Y + (int)Math.Round(5 * scale),
+            textRight - textX,
+            (int)Math.Round(22 * scale));
         TextRenderer.DrawText(
             g,
             program.Name,
@@ -356,7 +371,11 @@ public class ElvisCardsView : ScrollableControl
         else if (program.StatusKind == 3) { statusColor = Color.FromArgb(230, 160, 40); }
         else if (program.Installed) { statusColor = Color.FromArgb(59, 165, 93); }
 
-        Rectangle detailRect = new Rectangle(textX, rect.Y + 27, textRight - textX, 18);
+        Rectangle detailRect = new Rectangle(
+            textX,
+            rect.Y + (int)Math.Round(27 * scale),
+            textRight - textX,
+            (int)Math.Round(18 * scale));
         TextRenderer.DrawText(
             g,
             status,
@@ -365,9 +384,9 @@ public class ElvisCardsView : ScrollableControl
             statusColor,
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
-        int cx = rect.Right - 15;
+        int cx = rect.Right - (int)Math.Round(15 * scale);
         int cy = rect.Y + (rect.Height / 2);
-        int radius = 9;
+        int radius = (int)Math.Round(9 * scale);
 
         if (program.Selected)
         {
@@ -375,22 +394,22 @@ public class ElvisCardsView : ScrollableControl
             {
                 g.FillEllipse(brush, cx - radius, cy - radius, radius * 2, radius * 2);
             }
-            using (Pen pen = new Pen(Color.White, 1.8f))
+            using (Pen pen = new Pen(Color.White, 1.8f * scale))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
                 g.DrawLines(pen, new PointF[]
                 {
-                    new PointF(cx - 4, cy),
-                    new PointF(cx - 1, cy + 3),
-                    new PointF(cx + 4, cy - 3)
+                    new PointF(cx - (4 * scale), cy),
+                    new PointF(cx - (1 * scale), cy + (3 * scale)),
+                    new PointF(cx + (4 * scale), cy - (3 * scale))
                 });
             }
         }
         else
         {
             Color ring = hover ? Color.FromArgb(120, 124, 130) : Color.FromArgb(92, 95, 102);
-            using (Pen pen = new Pen(ring, 1.4f))
+            using (Pen pen = new Pen(ring, 1.4f * scale))
             {
                 g.DrawEllipse(pen, cx - radius, cy - radius, radius * 2, radius * 2);
             }
@@ -573,10 +592,16 @@ public class ElvisToggle : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(BackColor);
 
-        int trackWidth = 36;
-        int trackHeight = 18;
-        int trackX = 2;
+        float scale = g.DpiX / 96f;
+        if (scale <= 0f || float.IsNaN(scale)) { scale = 1f; }
+
+        int trackWidth = (int)Math.Round(36 * scale);
+        int trackHeight = (int)Math.Round(18 * scale);
+        int trackX = (int)Math.Round(2 * scale);
         int trackY = (Height - trackHeight) / 2;
+        int knobSize = (int)Math.Round(14 * scale);
+        int knobOffset = (int)Math.Round(2 * scale);
+        int textGap = (int)Math.Round(10 * scale);
 
         Color trackColor;
         if (!Enabled) { trackColor = Color.FromArgb(62, 64, 70); }
@@ -590,8 +615,7 @@ public class ElvisToggle : Control
             g.FillPath(brush, path);
         }
 
-        int knobSize = 14;
-        int knobX = isChecked ? trackX + trackWidth - knobSize - 2 : trackX + 2;
+        int knobX = isChecked ? trackX + trackWidth - knobSize - knobOffset : trackX + knobOffset;
         int knobY = trackY + (trackHeight - knobSize) / 2;
         using (SolidBrush brush = new SolidBrush(Enabled ? Color.White : Color.FromArgb(175, 178, 184)))
         {
@@ -599,7 +623,8 @@ public class ElvisToggle : Control
         }
 
         Color textColor = Enabled ? ForeColor : Color.FromArgb(125, 128, 134);
-        Rectangle textRect = new Rectangle(trackX + trackWidth + 10, 0, Width - (trackX + trackWidth + 10), Height);
+        int textX = trackX + trackWidth + textGap;
+        Rectangle textRect = new Rectangle(textX, 0, Width - textX, Height);
         TextRenderer.DrawText(
             g,
             Text,
@@ -613,7 +638,7 @@ public class ElvisToggle : Control
             using (Pen pen = new Pen(Color.FromArgb(90, 169, 230), 1f))
             {
                 pen.DashStyle = DashStyle.Dot;
-                g.DrawRectangle(pen, textRect.X, 2, textRect.Width - 2, Height - 5);
+                g.DrawRectangle(pen, textRect.X, 2, textRect.Width - 2, Height - (int)Math.Round(5 * scale));
             }
         }
     }

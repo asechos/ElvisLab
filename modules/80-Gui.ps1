@@ -68,30 +68,47 @@ function Show-Gui {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = '{0} {1}' -f $Config.appName, $Config.version
-    $form.ClientSize = New-Object System.Drawing.Size(1000, 640)
+    $form.AutoScaleMode = 'Font'
+    $form.AutoScaleDimensions = New-Object System.Drawing.SizeF(96, 96)
     $form.StartPosition = 'CenterScreen'
-    $form.FormBorderStyle = 'FixedSingle'
-    $form.MaximizeBox = $false
+    $form.FormBorderStyle = 'Sizable'
+    $form.MaximizeBox = $true
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 11)
     $form.BackColor = $colors.window
+
+    $workArea = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $clientWidth = [int][Math]::Min(1180, [Math]::Max(1000, $workArea.Width - 40))
+    $clientHeight = [int][Math]::Min(740, [Math]::Max(640, $workArea.Height - 60))
+    $form.ClientSize = New-Object System.Drawing.Size($clientWidth, $clientHeight)
+    $form.MinimumSize = New-Object System.Drawing.Size(1016, 679)
 
     $iconPath = Join-Path $script:ScriptDir 'Resources\ElvisLab.ico'
     if (Test-Path -LiteralPath $iconPath) {
         try { $form.Icon = New-Object System.Drawing.Icon($iconPath) } catch { }
     }
 
+    $rootLayout = New-Object System.Windows.Forms.TableLayoutPanel
+    $rootLayout.Dock = 'Fill'
+    $rootLayout.ColumnCount = 2
+    $rootLayout.RowCount = 3
+    $rootLayout.Margin = New-Object System.Windows.Forms.Padding(0)
+    $rootLayout.Padding = New-Object System.Windows.Forms.Padding(0)
+    $rootLayout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute, 204))) | Out-Null
+    $rootLayout.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $rootLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 50))) | Out-Null
+    $rootLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100))) | Out-Null
+    $rootLayout.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, 44))) | Out-Null
+    $form.Controls.Add($rootLayout)
+
     $mainHost = New-Object System.Windows.Forms.Panel
-    $mainHost.Location = New-Object System.Drawing.Point(204, 50)
-    $mainHost.Size = New-Object System.Drawing.Size(796, 546)
+    $mainHost.Dock = 'Fill'
     $mainHost.BackColor = $colors.window
-    $form.Controls.Add($mainHost)
+    $rootLayout.Controls.Add($mainHost, 1, 1)
 
     # --- Barra superior ------------------------------------------------------
     $topBar = New-Object System.Windows.Forms.Panel
-    $topBar.Location = New-Object System.Drawing.Point(0, 0)
     $topBar.Size = New-Object System.Drawing.Size(1000, 50)
     $topBar.BackColor = $colors.topBar
-    $form.Controls.Add($topBar)
 
     $topBorder = New-Object System.Windows.Forms.Panel
     $topBorder.Dock = 'Bottom'
@@ -114,44 +131,49 @@ function Show-Gui {
     $topBar.Controls.Add($brandLine)
 
     $txtSearch = New-Object System.Windows.Forms.TextBox
-    $txtSearch.Location = New-Object System.Drawing.Point(730, 13)
-    $txtSearch.Size = New-Object System.Drawing.Size(254, 24)
+    $txtSearch.Location = New-Object System.Drawing.Point(740, 13)
+    $txtSearch.Size = New-Object System.Drawing.Size(244, 24)
     $txtSearch.BackColor = $colors.panel
     $txtSearch.ForeColor = $colors.muted
     $txtSearch.BorderStyle = 'FixedSingle'
     $txtSearch.Text = 'Buscar programas...'
+    $txtSearch.Anchor = 'Top,Right'
     $topBar.Controls.Add($txtSearch)
 
     $btnBackendDirect = New-Object System.Windows.Forms.Button
     $btnBackendDirect.Text = 'Directo'
-    $btnBackendDirect.Location = New-Object System.Drawing.Point(612, 10)
+    $btnBackendDirect.Location = New-Object System.Drawing.Point(620, 10)
     $btnBackendDirect.Size = New-Object System.Drawing.Size(58, 30)
     $btnBackendDirect.FlatStyle = 'Flat'
     $btnBackendDirect.FlatAppearance.BorderSize = 0
     $btnBackendDirect.Font = New-Object System.Drawing.Font('Segoe UI', 10)
     $btnBackendDirect.Cursor = 'Hand'
+    $btnBackendDirect.Anchor = 'Top,Right'
     $topBar.Controls.Add($btnBackendDirect)
 
     $btnBackendWinget = New-Object System.Windows.Forms.Button
     $btnBackendWinget.Text = 'Winget'
-    $btnBackendWinget.Location = New-Object System.Drawing.Point(672, 10)
+    $btnBackendWinget.Location = New-Object System.Drawing.Point(680, 10)
     $btnBackendWinget.Size = New-Object System.Drawing.Size(56, 30)
     $btnBackendWinget.FlatStyle = 'Flat'
     $btnBackendWinget.FlatAppearance.BorderSize = 0
     $btnBackendWinget.Font = New-Object System.Drawing.Font('Segoe UI', 10)
     $btnBackendWinget.Cursor = 'Hand'
+    $btnBackendWinget.Anchor = 'Top,Right'
     $topBar.Controls.Add($btnBackendWinget)
 
     $backendTip = New-Object System.Windows.Forms.ToolTip
     $backendTip.SetToolTip($btnBackendDirect, 'Instaladores oficiales verificados con SHA256 y/o firma digital.')
     $backendTip.SetToolTip($btnBackendWinget, 'Windows Package Manager: instala y actualiza desde el catalogo de winget.')
 
+    $topBar.Dock = 'Fill'
+    $rootLayout.Controls.Add($topBar, 0, 0)
+    $rootLayout.SetColumnSpan($topBar, 2)
+
     # --- Panel lateral -------------------------------------------------------
     $sideBar = New-Object System.Windows.Forms.Panel
-    $sideBar.Location = New-Object System.Drawing.Point(0, 50)
     $sideBar.Size = New-Object System.Drawing.Size(204, 546)
     $sideBar.BackColor = $colors.sideBar
-    $form.Controls.Add($sideBar)
 
     $sideBorder = New-Object System.Windows.Forms.Panel
     $sideBorder.Dock = 'Right'
@@ -161,10 +183,8 @@ function Show-Gui {
 
     # --- Barra de estado -----------------------------------------------------
     $statusBar = New-Object System.Windows.Forms.Panel
-    $statusBar.Location = New-Object System.Drawing.Point(0, 596)
     $statusBar.Size = New-Object System.Drawing.Size(1000, 44)
     $statusBar.BackColor = $colors.topBar
-    $form.Controls.Add($statusBar)
 
     $statusBorder = New-Object System.Windows.Forms.Panel
     $statusBorder.Dock = 'Top'
@@ -205,7 +225,12 @@ function Show-Gui {
     $lblVersion.Size = New-Object System.Drawing.Size(68, 20)
     $lblVersion.TextAlign = 'MiddleRight'
     $lblVersion.ForeColor = $colors.muted
+    $lblVersion.Anchor = 'Top,Right'
     $statusBar.Controls.Add($lblVersion)
+
+    $statusBar.Dock = 'Fill'
+    $rootLayout.Controls.Add($statusBar, 0, 2)
+    $rootLayout.SetColumnSpan($statusBar, 2)
 
     # --- Contenido por pestanas ----------------------------------------------
     $tabPanels = @{}
@@ -387,6 +412,18 @@ function Show-Gui {
                 $row.Controls.Add($description)
             }
 
+            $row.Add_Resize({
+                param($sender, $eventArgs)
+                $rowWidth = $sender.Width
+                foreach ($child in $sender.Controls) {
+                    if ($child -is [ElvisToggle]) {
+                        $child.Width = [Math]::Max(200, $rowWidth - 28)
+                    } elseif ($child -is [System.Windows.Forms.Label]) {
+                        $child.Width = [Math]::Max(150, $rowWidth - 60)
+                    }
+                }
+            })
+
             $flowTweaks.Controls.Add($row)
             $script:TweakChecks[$tweak.id] = $check
             $script:TweakModels[$tweak.id] = $tweak
@@ -403,6 +440,16 @@ function Show-Gui {
     }
 
     $flowTweaks.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
+
+    $flowTweaks.Add_Resize({
+        param($sender, $eventArgs)
+        $flowWidth = [Math]::Max(300, $sender.ClientSize.Width - 24)
+        foreach ($control in $sender.Controls) {
+            if ($control -is [System.Windows.Forms.Panel] -or $control -is [System.Windows.Forms.Label]) {
+                $control.Width = $flowWidth
+            }
+        }
+    })
 
     $btnApplyTweaks = New-FlatButton -Text 'Ejecutar ajustes marcados' -X 18 -Y 448 -Width 240 -Height 40 -Primary
     $tabTweaks.Controls.Add($btnApplyTweaks)
@@ -425,6 +472,24 @@ function Show-Gui {
     $lblTweaksFooter.Size = New-Object System.Drawing.Size(740, 20)
     $tabTweaks.Controls.Add($lblTweaksFooter)
 
+    $tabTweaks.Add_Resize({
+        $tabHeight = $tabTweaks.ClientSize.Height
+        $tabWidth = $tabTweaks.ClientSize.Width
+        $buttonsTop = [Math]::Max(448, $tabHeight - 98)
+        $countTop = $buttonsTop + 44
+        $footerTop = $countTop + 22
+        $flowHeight = [Math]::Max(120, $buttonsTop - 12 - 120)
+        $contentWidth = [Math]::Max(400, $tabWidth - 36)
+
+        $flowTweaks.Location = New-Object System.Drawing.Point(18, 120)
+        $flowTweaks.Size = New-Object System.Drawing.Size($contentWidth, $flowHeight)
+        $btnApplyTweaks.Location = New-Object System.Drawing.Point(18, $buttonsTop)
+        $btnUndoTweaks.Location = New-Object System.Drawing.Point(270, $buttonsTop)
+        $lblTweakCount.Location = New-Object System.Drawing.Point(18, $countTop)
+        $lblTweaksFooter.Location = New-Object System.Drawing.Point(18, $footerTop)
+        $lblTweaksFooter.Width = $contentWidth
+    })
+
     # Pestana Registro
     $lblLogTitle = New-Object System.Windows.Forms.Label
     $lblLogTitle.Text = 'Registro de actividades'
@@ -435,8 +500,7 @@ function Show-Gui {
     $tabLog.Controls.Add($lblLogTitle)
 
     $txtLog = New-Object System.Windows.Forms.RichTextBox
-    $txtLog.Location = New-Object System.Drawing.Point(24, 54)
-    $txtLog.Size = New-Object System.Drawing.Size(748, 438)
+    $txtLog.Dock = 'Fill'
     $txtLog.ReadOnly = $true
     $txtLog.BackColor = [System.Drawing.Color]::FromArgb(24, 25, 28)
     $txtLog.ForeColor = $colors.text
@@ -446,6 +510,7 @@ function Show-Gui {
     $txtLog.WordWrap = $true
     $txtLog.DetectUrls = $false
     $txtLog.HideSelection = $false
+    $tabLog.Padding = New-Object System.Windows.Forms.Padding(24, 54, 24, 24)
     $tabLog.Controls.Add($txtLog)
 
     # Pestana Config
@@ -649,7 +714,11 @@ Accesos directos: $(@($Config.shortcuts).Count)
     $lblSummary.Size = New-Object System.Drawing.Size(174, 64)
     $lblSummary.ForeColor = $colors.muted
     $lblSummary.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+    $lblSummary.Anchor = 'Bottom,Left'
     $sideBar.Controls.Add($lblSummary)
+
+    $sideBar.Dock = 'Fill'
+    $rootLayout.Controls.Add($sideBar, 0, 1)
 
     # --- Logica de la interfaz ----------------------------------------------
     function Set-UiProgress {
