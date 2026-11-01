@@ -1,0 +1,165 @@
+{
+  "appName": "ElvisLab",
+  "version": "1.2.0",
+  "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
+  "files": [
+    {
+      "id": "python",
+      "name": "Python 3.12",
+      "wingetId": "Python.Python.3.12",
+      "category": "Desarrollo",
+      "badgeText": "Py",
+      "badgeColor": "#3776AB",
+      "icon": "",
+      "source": "https://www.python.org/ftp/python/3.12.5/python-3.12.5-amd64.exe",
+      "destination": "python-3.12.5-amd64.exe",
+      "sha256": "44810512AF577CA70B3269B8570B10825EC2ACE2B86E4297E767A0F4C0EE8BFD",
+      "publisher": "Python Software Foundation",
+      "installArgs": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+      "installTimeoutSec": 900,
+      "successExitCodes": [ 0, 3010, 1641 ],
+      "installedPath": "%ProgramFiles%\\Python312\\python.exe",
+      "alternatePaths": [
+        "%LocalAppData%\\Programs\\Python\\Python312\\python.exe"
+      ]
+    },
+    {
+      "id": "notepadpp",
+      "name": "Notepad++",
+      "wingetId": "Notepad++.Notepad++",
+      "category": "Desarrollo",
+      "badgeText": "N++",
+      "badgeColor": "#3E9A2E",
+      "icon": "",
+      "source": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.8.1/npp.8.9.8.1.Installer.x64.exe",
+      "destination": "npp.8.9.8.1.Installer.x64.exe",
+      "sha256": "26F3BCCED788FADBAC4E7E577B430EA2CE6060CF3BCAD993EF4612ECD7D743DA",
+      "publisher": "NOTEPAD++",
+      "installArgs": "/S",
+      "installTimeoutSec": 300,
+      "successExitCodes": [ 0 ],
+      "installedPath": "%ProgramFiles%\\Notepad++\\notepad++.exe",
+      "alternatePaths": [
+        "%LocalAppData%\\Programs\\Notepad++\\notepad++.exe"
+      ]
+    },
+    {
+      "id": "7zip",
+      "name": "7-Zip",
+      "wingetId": "7zip.7zip",
+      "category": "Utilidades",
+      "badgeText": "7z",
+      "badgeColor": "#1E88E5",
+      "icon": "",
+      "source": "https://www.7-zip.org/a/7z2605-x64.exe",
+      "destination": "7z2605-x64.exe",
+      "sha256": "FD99E86F57D8F429EF5ED045BF98315AF962E2309B0F1BA87A147A44C71647D0",
+      "publisher": "",
+      "installArgs": "/S",
+      "installTimeoutSec": 300,
+      "successExitCodes": [ 0 ],
+      "installedPath": "%ProgramFiles%\\7-Zip\\7zFM.exe",
+      "alternatePaths": [
+        "%LocalAppData%\\Programs\\7-Zip\\7zFM.exe"
+      ]
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "wingetId": "Git.Git",
+      "category": "Desarrollo",
+      "badgeText": "Git",
+      "badgeColor": "#F05033",
+      "icon": "",
+      "source": "https://github.com/git-for-windows/git/releases/download/v2.56.0.windows.4/Git-2.56.0.4-64-bit.exe",
+      "destination": "Git-2.56.0.4-64-bit.exe",
+      "sha256": "4961A4A8CC778D8B6E00A5819E5FE4D078B754555AFF7AEDC2D77A5D74C2DE80",
+      "publisher": "Johannes Schindelin",
+      "installArgs": "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,ext\\reg\\shellhere,assoc,assoc_sh\"",
+      "installTimeoutSec": 600,
+      "successExitCodes": [ 0, 3010 ],
+      "installedPath": "%ProgramFiles%\\Git\\git-bash.exe",
+      "alternatePaths": [
+        "%LocalAppData%\\Programs\\Git\\git-bash.exe"
+      ]
+    },
+    {
+      "id": "vlc",
+      "name": "VLC",
+      "wingetId": "VideoLAN.VLC",
+      "category": "Multimedia",
+      "badgeText": "VLC",
+      "badgeColor": "#FF7A00",
+      "icon": "",
+      "source": "https://get.videolan.org/vlc/3.0.19/win64/vlc-3.0.19-win64.exe",
+      "destination": "vlc-3.0.19-win64.exe",
+      "sha256": "409E0CB6F80C840AEFA6F7F48D168B3CCE63EB1BB1A67B44929F6D6DD1BC8FE5",
+      "publisher": "VideoLAN",
+      "installArgs": "/L=1033 /S",
+      "installTimeoutSec": 300,
+      "successExitCodes": [ 0 ],
+      "installedPath": "%ProgramFiles%\\VideoLAN\\VLC\\vlc.exe",
+      "alternatePaths": [
+        "%LocalAppData%\\Programs\\VideoLAN\\VLC\\vlc.exe"
+      ]
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Python 3.12",
+      "fileName": "Python 3.12.lnk",
+      "location": "Desktop",
+      "fileId": "python",
+      "description": "Python 3.12"
+    },
+    {
+      "name": "Notepad++",
+      "fileName": "Notepad++.lnk",
+      "location": "Desktop",
+      "fileId": "notepadpp",
+      "description": "Notepad++"
+    },
+    {
+      "name": "7-Zip",
+      "fileName": "7-Zip.lnk",
+      "location": "Desktop",
+      "fileId": "7zip",
+      "description": "7-Zip File Manager"
+    },
+    {
+      "name": "Git Bash",
+      "fileName": "Git Bash.lnk",
+      "location": "Desktop",
+      "fileId": "git",
+      "description": "Git Bash"
+    },
+    {
+      "name": "VLC",
+      "fileName": "VLC.lnk",
+      "location": "Desktop",
+      "fileId": "vlc",
+      "description": "VLC media player"
+    }
+  ],
+  "tweaks": [
+    {
+      "id": "restorepoint",
+      "name": "Crear punto de restauracion antes de cambios",
+      "type": "restorepoint",
+      "enabled": true,
+      "description": "Crea un punto de restauracion del sistema antes de instalar."
+    },
+    {
+      "id": "telemetry",
+      "name": "Desactivar telemetria de Windows",
+      "type": "registry",
+      "enabled": true,
+      "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+      "valueName": "AllowTelemetry",
+      "value": 0,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Establece AllowTelemetry=0 en la politica de recopilacion de datos."
+    }
+  ]
+}

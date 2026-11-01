@@ -1,0 +1,6 @@
+# Registros y artefactos locales
+*.log
+*.tmp
+bin/
+obj/
+.vs/
