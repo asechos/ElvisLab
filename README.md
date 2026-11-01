@@ -43,12 +43,29 @@ categoría, búsqueda y barra de progreso.
 
 ```
 ElvisLab\
-│   ElvisLab.ps1        Script principal
-│   ElvisLab.exe        Versión compilada (opcional, sin firmar)
+│   ElvisLab.ps1        Lanzador: parametros, carga de modulos y arranque
+│   ElvisLab.exe        Compilado autocontenido (opcional, sin firmar)
 │   config.json         Programas, accesos y ajustes
 │   README.md
+├─ modules\
+│   manifest.json       Orden de carga de los modulos
+│   00-Core.ps1         Utilidades base, rutas, registro y logging
+│   10-Config.ps1       Lectura y validacion de config.json
+│   20-Install.ps1      Descargas, verificacion, instaladores y winget
+│   30-Tweaks.ps1       Aplicacion y restauracion de tweaks
+│   40-SystemTools.ps1  DNS, planes de energia y limpieza de temporales
+│   50-Shortcuts.ps1    Accesos directos
+│   60-Headless.ps1     Modo desatendido y progreso de trabajos
+│   70-UiTypes.ps1      Controles WinForms personalizados
+│   80-Gui.ps1          Interfaz grafica principal
+│   90-SelfTest.ps1     Autotest
+│   95-Build.ps1        Empaquetado con ps2exe
+│   98-Elevation.ps1    Elevacion y relanzamiento
 └─ Resources\           Iconos opcionales
 ```
+
+El `.ps1` carga los modulos desde `modules\`. Al compilar con `-Build`, los modulos se concatenan
+en un bundle temporal y el `.exe` resultante es autocontenido: no necesita la carpeta `modules\`.
 
 Los iconos son opcionales. Si un programa está instalado, la tarjeta usa el icono real del ejecutable.
 También puedes indicar un `.ico` o `.png` en el campo `icon` de cada programa.
@@ -220,7 +237,7 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 ```json
 {
   "appName": "ElvisLab",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -402,7 +419,8 @@ Install-Module ps2exe -Scope CurrentUser -Force   # una sola vez
 .\ElvisLab.ps1 -Build
 ```
 
-El `.exe` incluye el manifiesto de Administrador y no muestra consola. Sigue necesitando `config.json`
+El `.exe` incluye el manifiesto de Administrador y no muestra consola. Se genera a partir de un bundle
+de `modules\`, así que es autocontenido y no necesita la carpeta `modules`. Sigue necesitando `config.json`
 en la misma carpeta y no está firmado.
 
 ---
@@ -438,6 +456,7 @@ en la misma carpeta y no está firmado.
 
 ## Archivos principales
 
-- `ElvisLab.ps1`: interfaz, motor de descarga/verificación/instalación, winget, tweaks, accesos, modo headless.
+- `ElvisLab.ps1`: lanzador; define parámetros, carga `modules\` y ejecuta el arranque.
+- `modules\`: código separado por responsabilidad.
 - `config.json`: catálogo y ajustes.
-- `ElvisLab.exe`: compilado opcional con ps2exe.
+- `ElvisLab.exe`: compilado autocontenido (los módulos se empaquetan dentro).
