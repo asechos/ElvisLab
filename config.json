@@ -1,6 +1,6 @@
 {
   "appName": "ElvisLab",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -146,13 +146,15 @@
       "id": "restorepoint",
       "name": "Crear punto de restauracion antes de cambios",
       "type": "restorepoint",
+      "category": "Esenciales",
       "enabled": true,
       "description": "Crea un punto de restauracion del sistema antes de instalar."
     },
     {
       "id": "telemetry",
-      "name": "Desactivar telemetria de Windows",
+      "name": "Telemetria de Windows - Desactivar",
       "type": "registry",
+      "category": "Esenciales",
       "enabled": true,
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
       "valueName": "AllowTelemetry",
@@ -160,6 +162,234 @@
       "kind": "DWord",
       "undo": { "action": "remove" },
       "description": "Establece AllowTelemetry=0 en la politica de recopilacion de datos."
+    },
+    {
+      "id": "activityhistory",
+      "name": "Historial de actividad - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "values": [
+        { "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "valueName": "EnableActivityFeed", "value": 0, "kind": "DWord", "undo": { "action": "remove" } },
+        { "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "valueName": "PublishUserActivities", "value": 0, "kind": "DWord", "undo": { "action": "remove" } },
+        { "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System", "valueName": "UploadUserActivities", "value": 0, "kind": "DWord", "undo": { "action": "remove" } }
+      ],
+      "description": "Desactiva el historial de actividad y la sincronizacion de actividades."
+    },
+    {
+      "id": "location",
+      "name": "Ubicacion - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors",
+      "valueName": "DisableLocation",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Desactiva el acceso a la ubicacion mediante politica de equipo."
+    },
+    {
+      "id": "consumerfeatures",
+      "name": "Caracteristicas de consumidor - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+      "valueName": "DisableWindowsConsumerFeatures",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Evita sugerencias y contenido promocional de Microsoft en Windows."
+    },
+    {
+      "id": "deliveryoptimization",
+      "name": "Optimizacion de entrega - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeliveryOptimization",
+      "valueName": "DODownloadMode",
+      "value": 0,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Limita la optimizacion de entrega a descargas HTTP."
+    },
+    {
+      "id": "widgets",
+      "name": "Widgets - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Dsh",
+      "valueName": "AllowNewsAndInterests",
+      "value": 0,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Desactiva el panel de widgets y noticias de Windows 11."
+    },
+    {
+      "id": "backgroundapps",
+      "name": "Aplicaciones en segundo plano - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\BackgroundAccessApplications",
+      "valueName": "GlobalUserDisabled",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 0, "kind": "DWord" },
+      "description": "Impide que las aplicaciones de la Tienda se ejecuten en segundo plano."
+    },
+    {
+      "id": "bingsearch",
+      "name": "Busqueda web en Inicio - Desactivar",
+      "type": "registry",
+      "category": "Esenciales",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Search",
+      "valueName": "BingSearchEnabled",
+      "value": 0,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 1, "kind": "DWord" },
+      "description": "Elimina los resultados web de Bing del menu Inicio."
+    },
+    {
+      "id": "darktheme",
+      "name": "Tema oscuro - Activar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "valueName": "AppsUseLightTheme", "value": 0, "kind": "DWord", "undo": { "action": "set", "value": 1, "kind": "DWord" } },
+        { "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "valueName": "SystemUsesLightTheme", "value": 0, "kind": "DWord", "undo": { "action": "set", "value": 1, "kind": "DWord" } }
+      ],
+      "description": "Activa el tema oscuro para aplicaciones y sistema."
+    },
+    {
+      "id": "fileextensions",
+      "name": "Extensiones de archivo - Mostrar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "valueName": "HideFileExt",
+      "value": 0,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 1, "kind": "DWord" },
+      "description": "Muestra las extensiones de archivo en el Explorador."
+    },
+    {
+      "id": "hiddenfiles",
+      "name": "Archivos ocultos - Mostrar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "valueName": "Hidden",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 2, "kind": "DWord" },
+      "description": "Muestra archivos y carpetas ocultos."
+    },
+    {
+      "id": "taskbarcenter",
+      "name": "Iconos centrados en la barra de tareas - Activar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "valueName": "TaskbarAl",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 0, "kind": "DWord" },
+      "description": "Centra los iconos de la barra de tareas (Windows 11)."
+    },
+    {
+      "id": "gamemode",
+      "name": "Modo juego - Activar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "values": [
+        { "path": "HKCU:\\Software\\Microsoft\\GameBar", "valueName": "AutoGameModeEnabled", "value": 1, "kind": "DWord", "undo": { "action": "set", "value": 0, "kind": "DWord" } },
+        { "path": "HKCU:\\Software\\Microsoft\\GameBar", "valueName": "AllowAutoGameMode", "value": 1, "kind": "DWord", "undo": { "action": "set", "value": 0, "kind": "DWord" } }
+      ],
+      "description": "Activa el modo juego de Windows."
+    },
+    {
+      "id": "endtask",
+      "name": "Finalizar tarea con clic derecho - Activar",
+      "type": "registry",
+      "category": "Interfaz",
+      "enabled": false,
+      "path": "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced",
+      "valueName": "TaskbarEndTask",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "set", "value": 0, "kind": "DWord" },
+      "description": "Muestra 'Finalizar tarea' en el menu contextual de la barra de tareas."
+    },
+    {
+      "id": "longpaths",
+      "name": "Rutas largas - Activar",
+      "type": "registry",
+      "category": "Avanzados",
+      "enabled": false,
+      "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem",
+      "valueName": "LongPathsEnabled",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Permite rutas de mas de 260 caracteres. Requiere reiniciar."
+    },
+    {
+      "id": "verboselogon",
+      "name": "Inicio de sesion detallado - Activar",
+      "type": "registry",
+      "category": "Avanzados",
+      "enabled": false,
+      "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+      "valueName": "VerboseStatus",
+      "value": 1,
+      "kind": "DWord",
+      "undo": { "action": "remove" },
+      "description": "Muestra mensajes detallados durante el inicio y cierre de sesion."
+    },
+    {
+      "id": "hibernation",
+      "name": "Hibernacion - Desactivar",
+      "type": "hibernation",
+      "category": "Avanzados",
+      "enabled": false,
+      "action": "disable",
+      "description": "Ejecuta powercfg /hibernate off. Desactiva hibernacion y inicio rapido."
+    },
+    {
+      "id": "diagtrack",
+      "name": "Servicio DiagTrack - Desactivar",
+      "type": "service",
+      "category": "Avanzados",
+      "enabled": false,
+      "serviceName": "DiagTrack",
+      "startupType": "Disabled",
+      "stopService": true,
+      "undoStartupType": "Automatic",
+      "undoStartService": true,
+      "description": "Detiene y desactiva el servicio de telemetria DiagTrack."
+    },
+    {
+      "id": "wersvc",
+      "name": "Informe de errores de Windows - Desactivar",
+      "type": "service",
+      "category": "Avanzados",
+      "enabled": false,
+      "serviceName": "WerSvc",
+      "startupType": "Disabled",
+      "stopService": true,
+      "undoStartupType": "Manual",
+      "undoStartService": true,
+      "description": "Detiene y desactiva el servicio de informes de errores WerSvc."
     }
   ]
 }

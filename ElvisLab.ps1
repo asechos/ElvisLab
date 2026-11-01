@@ -74,8 +74,8 @@
 param(
     [string]$ConfigPath = '',
     [switch]$Headless,
-    [string]$Install = '',
-    [string]$Tweaks = '',
+    [string[]]$Install = @(),
+    [string[]]$Tweaks = @(),
     [switch]$NoTweaks,
     [switch]$Shortcuts,
     [switch]$DryRun,
@@ -144,6 +144,45 @@ function Resolve-LocalPath {
         $resolved = Join-Path $script:ScriptDir $resolved
     }
     return $resolved
+}
+
+function ConvertTo-UndoSpec {
+    param($Node)
+
+    $action = 'remove'
+    $value = $null
+    $kind = 'DWord'
+
+    if ($Node) {
+        if ($Node.action) { $action = ([string]$Node.action).ToLowerInvariant() }
+        if ($action -notin @('remove', 'set')) {
+            throw "Accion de deshacer desconocida: $action"
+        }
+        $value = $Node.value
+        if ($Node.kind) { $kind = [string]$Node.kind }
+    }
+
+    if ($kind -notin @('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord', 'None')) {
+        throw "Tipo de valor de registro desconocido: $kind"
+    }
+
+    return [pscustomobject]@{
+        action = $action
+        value  = $value
+        kind   = $kind
+    }
+}
+
+function Convert-RegistryValue {
+    param($Value, [string]$Kind)
+
+    switch ($Kind) {
+        'DWord' { return [int]$Value }
+        'QWord' { return [long]$Value }
+        'String' { return [string]$Value }
+        'ExpandString' { return [string]$Value }
+        default { return $Value }
+    }
 }
 
 function Test-IsAdmin {
@@ -324,45 +363,108 @@ function Read-ConfigFile {
         $tweakIds[$key] = $true
 
         $type = if ($entry.type) { ([string]$entry.type).ToLowerInvariant() } else { 'registry' }
-        if ($type -notin @('registry', 'restorepoint')) {
+        if ($type -notin @('registry', 'restorepoint', 'service', 'hibernation')) {
             throw "El tweak '$id' tiene un tipo desconocido: $type"
         }
 
         $enabled = if ($null -eq $entry.enabled) { $true } else { [bool]$entry.enabled }
+        $category = if ($entry.category) { [string]$entry.category } else { 'Ajustes' }
 
-        $kind = if ($entry.kind) { [string]$entry.kind } else { 'DWord' }
-        if ($kind -notin @('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord', 'None')) {
-            throw "El tweak '$id' tiene un tipo de valor de registro desconocido: $kind"
-        }
-
+        $values = @()
         if ($type -eq 'registry') {
-            if ([string]::IsNullOrWhiteSpace([string]$entry.path)) { throw "El tweak '$id' no tiene 'path'." }
-            if ([string]::IsNullOrWhiteSpace([string]$entry.valueName)) { throw "El tweak '$id' no tiene 'valueName'." }
+            $rawValues = @($entry.values | Where-Object { $null -ne $_ })
+            if ($rawValues.Count -gt 0) {
+                foreach ($raw in $rawValues) {
+                    $valuePath = if ($raw.path) { [string]$raw.path } else { [string]$entry.path }
+                    $valueName = [string]$raw.valueName
+                    if ([string]::IsNullOrWhiteSpace($valuePath)) { throw "El tweak '$id' tiene un valor sin 'path'." }
+                    if ([string]::IsNullOrWhiteSpace($valueName)) { throw "El tweak '$id' tiene un valor sin 'valueName'." }
+
+                    $valueKind = if ($raw.kind) { [string]$raw.kind } else { 'DWord' }
+                    if ($valueKind -notin @('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord', 'None')) {
+                        throw "El tweak '$id' tiene un tipo de valor de registro desconocido: $valueKind"
+                    }
+
+                    $undo = ConvertTo-UndoSpec -Node $raw.undo
+                    $values += [pscustomobject]@{
+                        path       = $valuePath
+                        valueName  = $valueName
+                        value      = $raw.value
+                        kind       = $valueKind
+                        undoAction = $undo.action
+                        undoValue  = $undo.value
+                        undoKind   = $undo.kind
+                    }
+                }
+            } else {
+                if ([string]::IsNullOrWhiteSpace([string]$entry.path)) { throw "El tweak '$id' no tiene 'path'." }
+                if ([string]::IsNullOrWhiteSpace([string]$entry.valueName)) { throw "El tweak '$id' no tiene 'valueName'." }
+
+                $valueKind = if ($entry.kind) { [string]$entry.kind } else { 'DWord' }
+                if ($valueKind -notin @('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord', 'None')) {
+                    throw "El tweak '$id' tiene un tipo de valor de registro desconocido: $valueKind"
+                }
+
+                $undo = ConvertTo-UndoSpec -Node $entry.undo
+                $values += [pscustomobject]@{
+                    path       = [string]$entry.path
+                    valueName  = [string]$entry.valueName
+                    value      = $entry.value
+                    kind       = $valueKind
+                    undoAction = $undo.action
+                    undoValue  = $undo.value
+                    undoKind   = $undo.kind
+                }
+            }
         }
 
-        $undoAction = 'remove'
-        $undoValue = $null
-        $undoKind = 'DWord'
-        if ($entry.undo) {
-            if ($entry.undo.action) { $undoAction = ([string]$entry.undo.action).ToLowerInvariant() }
-            if ($undoAction -notin @('remove', 'set')) { throw "El tweak '$id' tiene una accion de deshacer desconocida: $undoAction" }
-            $undoValue = $entry.undo.value
-            if ($entry.undo.kind) { $undoKind = [string]$entry.undo.kind }
+        $serviceName = ''
+        $startupType = ''
+        $stopService = $false
+        $undoStartupType = ''
+        $undoStartService = $false
+        $hibernationAction = 'disable'
+
+        if ($type -eq 'service') {
+            $serviceName = [string]$entry.serviceName
+            if ([string]::IsNullOrWhiteSpace($serviceName)) { throw "El tweak '$id' no tiene 'serviceName'." }
+
+            $startupType = if ($entry.startupType) { [string]$entry.startupType } else { 'Disabled' }
+            if ($startupType -notin @('Automatic', 'Manual', 'Disabled')) {
+                throw "El tweak '$id' tiene un 'startupType' no valido: $startupType"
+            }
+
+            $stopService = if ($null -eq $entry.stopService) { $true } else { [bool]$entry.stopService }
+
+            $undoStartupType = if ($entry.undoStartupType) { [string]$entry.undoStartupType } else { 'Automatic' }
+            if ($undoStartupType -notin @('Automatic', 'Manual', 'Disabled')) {
+                throw "El tweak '$id' tiene un 'undoStartupType' no valido: $undoStartupType"
+            }
+
+            $undoStartService = if ($null -eq $entry.undoStartService) { $true } else { [bool]$entry.undoStartService }
+        }
+
+        if ($type -eq 'hibernation') {
+            $hibernationAction = if ($entry.action) { ([string]$entry.action).ToLowerInvariant() } else { 'disable' }
+            if ($hibernationAction -notin @('disable', 'enable')) {
+                throw "El tweak '$id' tiene una accion de hibernacion no valida: $hibernationAction"
+            }
         }
 
         $tweaks += [pscustomobject]@{
-            id          = $id
-            name        = if ($entry.name) { [string]$entry.name } else { $id }
-            type        = $type
-            enabled     = $enabled
-            path        = [string]$entry.path
-            valueName   = [string]$entry.valueName
-            value       = $entry.value
-            kind        = $kind
-            undoAction  = $undoAction
-            undoValue   = $undoValue
-            undoKind    = $undoKind
-            description = [string]$entry.description
+            id                = $id
+            name              = if ($entry.name) { [string]$entry.name } else { $id }
+            type              = $type
+            category          = $category
+            enabled           = $enabled
+            description       = [string]$entry.description
+            values            = $values
+            serviceName       = $serviceName
+            startupType       = $startupType
+            stopService       = $stopService
+            undoStartupType   = $undoStartupType
+            undoStartService  = $undoStartService
+            hibernationAction = $hibernationAction
         }
     }
 
@@ -727,21 +829,54 @@ function Invoke-WingetUninstallFile {
 function Invoke-RegistryTweak {
     param($Tweak)
 
-    $path = Resolve-LocalPath $Tweak.path
-    if (-not (Test-Path -LiteralPath $path)) {
-        New-Item -Path $path -Force | Out-Null
+    if (-not $Tweak.values -or @($Tweak.values).Count -eq 0) {
+        throw "El tweak '$($Tweak.id)' no tiene valores de registro."
     }
 
-    $value = $Tweak.value
-    switch ($Tweak.kind) {
-        'DWord' { $value = [int]$Tweak.value }
-        'QWord' { $value = [long]$Tweak.value }
-        'String' { $value = [string]$Tweak.value }
-        'ExpandString' { $value = [string]$Tweak.value }
+    foreach ($item in @($Tweak.values)) {
+        $path = Resolve-LocalPath $item.path
+        if (-not (Test-Path -LiteralPath $path)) {
+            New-Item -Path $path -Force | Out-Null
+        }
+
+        $value = Convert-RegistryValue -Value $item.value -Kind $item.kind
+        New-ItemProperty -Path $path -Name $item.valueName -Value $value -PropertyType $item.kind -Force | Out-Null
     }
 
-    New-ItemProperty -Path $path -Name $Tweak.valueName -Value $value -PropertyType $Tweak.kind -Force | Out-Null
     Write-LogLine "Tweak aplicado: $($Tweak.name)" 'OK'
+}
+
+function Invoke-ServiceTweak {
+    param($Tweak)
+
+    $service = Get-Service -Name $Tweak.serviceName -ErrorAction SilentlyContinue
+    if (-not $service) {
+        Write-LogLine "El servicio '$($Tweak.serviceName)' no existe; se omite '$($Tweak.name)'." 'WARN'
+        return
+    }
+
+    Set-Service -Name $Tweak.serviceName -StartupType $Tweak.startupType -ErrorAction Stop
+
+    if ($Tweak.stopService) {
+        $service.Refresh()
+        if ($service.Status -eq 'Running') {
+            Stop-Service -Name $Tweak.serviceName -Force -ErrorAction Stop
+        }
+    }
+
+    Write-LogLine "Servicio $($Tweak.serviceName) configurado como $($Tweak.startupType)." 'OK'
+}
+
+function Invoke-HibernationTweak {
+    param($Tweak)
+
+    $setting = if ($Tweak.hibernationAction -eq 'enable') { 'on' } else { 'off' }
+    $output = (& powercfg.exe /hibernate $setting 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "powercfg fallo (codigo $LASTEXITCODE): $output"
+    }
+
+    Write-LogLine "Hibernacion: $setting." 'OK'
 }
 
 function Invoke-RestorePointTweak {
@@ -784,34 +919,68 @@ function Invoke-RestorePointTweak {
 function Invoke-UndoRegistryTweak {
     param($Tweak)
 
-    $path = Resolve-LocalPath $Tweak.path
-    if (-not (Test-Path -LiteralPath $path)) {
-        Write-LogLine "Nada que deshacer en '$($Tweak.name)': la clave no existe." 'WARN'
+    if (-not $Tweak.values -or @($Tweak.values).Count -eq 0) { return $false }
+
+    $changed = $false
+    foreach ($item in @($Tweak.values)) {
+        $path = Resolve-LocalPath $item.path
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+
+        if ($item.undoAction -eq 'set') {
+            $value = Convert-RegistryValue -Value $item.undoValue -Kind $item.undoKind
+            New-ItemProperty -Path $path -Name $item.valueName -Value $value -PropertyType $item.undoKind -Force | Out-Null
+            $changed = $true
+        } else {
+            $key = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
+            if ($key -and ($key.Property -contains $item.valueName)) {
+                Remove-ItemProperty -Path $path -Name $item.valueName -ErrorAction Stop
+                $changed = $true
+            }
+        }
+    }
+
+    if ($changed) {
+        Write-LogLine "Ajuste restaurado: $($Tweak.name)" 'OK'
+    } else {
+        Write-LogLine "Nada que deshacer en '$($Tweak.name)'." 'WARN'
+    }
+
+    return $changed
+}
+
+function Invoke-UndoServiceTweak {
+    param($Tweak)
+
+    $service = Get-Service -Name $Tweak.serviceName -ErrorAction SilentlyContinue
+    if (-not $service) {
+        Write-LogLine "El servicio '$($Tweak.serviceName)' no existe; se omite." 'WARN'
         return $false
     }
 
-    if ($Tweak.undoAction -eq 'set') {
-        $value = $Tweak.undoValue
-        switch ($Tweak.undoKind) {
-            'DWord' { $value = [int]$Tweak.undoValue }
-            'QWord' { $value = [long]$Tweak.undoValue }
-            'String' { $value = [string]$Tweak.undoValue }
-            'ExpandString' { $value = [string]$Tweak.undoValue }
+    Set-Service -Name $Tweak.serviceName -StartupType $Tweak.undoStartupType -ErrorAction Stop
+
+    if ($Tweak.undoStartService) {
+        $service.Refresh()
+        if ($service.Status -ne 'Running') {
+            Start-Service -Name $Tweak.serviceName -ErrorAction Stop
         }
-        New-ItemProperty -Path $path -Name $Tweak.valueName -Value $value -PropertyType $Tweak.undoKind -Force | Out-Null
-        Write-LogLine "Ajuste restaurado: $($Tweak.name) = $value" 'OK'
-        return $true
     }
 
-    $key = Get-Item -LiteralPath $path -ErrorAction Stop
-    if ($key.Property -contains $Tweak.valueName) {
-        Remove-ItemProperty -Path $path -Name $Tweak.valueName -ErrorAction Stop
-        Write-LogLine "Ajuste eliminado: $($Tweak.name)" 'OK'
-        return $true
+    Write-LogLine "Servicio $($Tweak.serviceName) restaurado a $($Tweak.undoStartupType)." 'OK'
+    return $true
+}
+
+function Invoke-UndoHibernationTweak {
+    param($Tweak)
+
+    $setting = if ($Tweak.hibernationAction -eq 'enable') { 'off' } else { 'on' }
+    $output = (& powercfg.exe /hibernate $setting 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "powercfg fallo (codigo $LASTEXITCODE): $output"
     }
 
-    Write-LogLine "Nada que deshacer en '$($Tweak.name)': el valor no existe." 'WARN'
-    return $false
+    Write-LogLine "Hibernacion restaurada: $setting." 'OK'
+    return $true
 }
 
 function Invoke-UndoTweak {
@@ -825,6 +994,12 @@ function Invoke-UndoTweak {
         'registry' {
             return (Invoke-UndoRegistryTweak -Tweak $Tweak)
         }
+        'service' {
+            return (Invoke-UndoServiceTweak -Tweak $Tweak)
+        }
+        'hibernation' {
+            return (Invoke-UndoHibernationTweak -Tweak $Tweak)
+        }
         default {
             throw "Tipo de tweak desconocido: $($Tweak.type)"
         }
@@ -837,6 +1012,8 @@ function Invoke-Tweak {
     switch ([string]$Tweak.type) {
         'restorepoint' { Invoke-RestorePointTweak -Tweak $Tweak }
         'registry' { Invoke-RegistryTweak -Tweak $Tweak }
+        'service' { Invoke-ServiceTweak -Tweak $Tweak }
+        'hibernation' { Invoke-HibernationTweak -Tweak $Tweak }
         default { throw "Tipo de tweak desconocido: $($Tweak.type)" }
     }
 }
@@ -980,17 +1157,17 @@ function Update-DownloadProgress {
 # ----------------------------------------------------------------------------
 
 function Get-FilesForRun {
-    param($Config, [string]$Ids)
+    param($Config, [string[]]$Ids = @())
 
-    if ([string]::IsNullOrWhiteSpace($Ids)) { return @($Config.files) }
+    $idList = @($Ids | ForEach-Object { ([string]$_ -split ',') } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($idList.Count -eq 0) { return @($Config.files) }
 
     $map = @{}
     foreach ($file in @($Config.files)) { $map[$file.id.ToLowerInvariant()] = $file }
 
     $result = @()
-    foreach ($id in ($Ids -split ',')) {
-        $key = $id.Trim().ToLowerInvariant()
-        if (-not $key) { continue }
+    foreach ($id in $idList) {
+        $key = $id.ToLowerInvariant()
         if ($map.ContainsKey($key)) {
             $result += $map[$key]
         } else {
@@ -1001,10 +1178,12 @@ function Get-FilesForRun {
 }
 
 function Get-TweaksForRun {
-    param($Config, [string]$Ids, [switch]$None)
+    param($Config, [string[]]$Ids = @(), [switch]$None)
 
     if ($None) { return @() }
-    if ([string]::IsNullOrWhiteSpace($Ids)) {
+
+    $idList = @($Ids | ForEach-Object { ([string]$_ -split ',') } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($idList.Count -eq 0) {
         return @($Config.tweaks | Where-Object { $_.enabled })
     }
 
@@ -1012,9 +1191,8 @@ function Get-TweaksForRun {
     foreach ($tweak in @($Config.tweaks)) { $map[$tweak.id.ToLowerInvariant()] = $tweak }
 
     $result = @()
-    foreach ($id in ($Ids -split ',')) {
-        $key = $id.Trim().ToLowerInvariant()
-        if (-not $key) { continue }
+    foreach ($id in $idList) {
+        $key = $id.ToLowerInvariant()
         if ($map.ContainsKey($key)) {
             $result += $map[$key]
         } else {
@@ -2139,6 +2317,7 @@ function Show-Gui {
     $script:InstallProcess = $null
     $script:ProgramStatus = @{}
     $script:TweakChecks = @{}
+    $script:TweakModels = @{}
 
     function New-FlatButton {
         param(
@@ -2430,50 +2609,73 @@ function Show-Gui {
     $tabTweaks.Controls.Add($lblTweaksTitle)
 
     $lblTweaksHint = New-Object System.Windows.Forms.Label
-    $lblTweaksHint.Text = 'Se aplican antes de instalar. El punto de restauracion se ejecuta primero.'
+    $lblTweaksHint.Text = 'Los ajustes se aplican antes de instalar. Usa un preset o marca los que quieras.'
     $lblTweaksHint.ForeColor = $colors.muted
     $lblTweaksHint.Location = New-Object System.Drawing.Point(24, 50)
     $lblTweaksHint.Size = New-Object System.Drawing.Size(720, 20)
     $tabTweaks.Controls.Add($lblTweaksHint)
 
+    $btnPresetRecommended = New-FlatButton -Text 'Recomendado' -X 18 -Y 78 -Width 136 -Height 32 -Primary
+    $btnPresetMinimal = New-FlatButton -Text 'Minimo' -X 162 -Y 78 -Width 120 -Height 32
+    $btnPresetAdvanced = New-FlatButton -Text 'Avanzados' -X 290 -Y 78 -Width 136 -Height 32
+    $btnPresetAll = New-FlatButton -Text 'Todo' -X 434 -Y 78 -Width 100 -Height 32
+    $btnPresetClear = New-FlatButton -Text 'Limpiar' -X 542 -Y 78 -Width 120 -Height 32
+    $tabTweaks.Controls.Add($btnPresetRecommended)
+    $tabTweaks.Controls.Add($btnPresetMinimal)
+    $tabTweaks.Controls.Add($btnPresetAdvanced)
+    $tabTweaks.Controls.Add($btnPresetAll)
+    $tabTweaks.Controls.Add($btnPresetClear)
+
     $flowTweaks = New-Object System.Windows.Forms.FlowLayoutPanel
-    $flowTweaks.Location = New-Object System.Drawing.Point(18, 82)
-    $flowTweaks.Size = New-Object System.Drawing.Size(760, 350)
+    $flowTweaks.Location = New-Object System.Drawing.Point(18, 120)
+    $flowTweaks.Size = New-Object System.Drawing.Size(760, 310)
     $flowTweaks.FlowDirection = 'TopDown'
     $flowTweaks.WrapContents = $false
     $flowTweaks.AutoScroll = $true
     $flowTweaks.BackColor = $colors.window
     $tabTweaks.Controls.Add($flowTweaks)
 
-    foreach ($tweak in @($Config.tweaks)) {
-        $row = New-Object System.Windows.Forms.Panel
-        $row.Size = New-Object System.Drawing.Size(744, 54)
-        $row.BackColor = $colors.panel
-        $row.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 8)
+    $tweakCategories = @($Config.tweaks | ForEach-Object { $_.category } | Select-Object -Unique)
+    foreach ($category in $tweakCategories) {
+        $header = New-Object System.Windows.Forms.Label
+        $header.Text = [string]$category
+        $header.Font = New-Object System.Drawing.Font('Segoe UI', 10.5, [System.Drawing.FontStyle]::Bold)
+        $header.ForeColor = [System.Drawing.Color]::FromArgb(90, 169, 230)
+        $header.Size = New-Object System.Drawing.Size(736, 24)
+        $header.Margin = New-Object System.Windows.Forms.Padding(0, 10, 0, 4)
+        $flowTweaks.Controls.Add($header)
 
-        $check = New-Object System.Windows.Forms.CheckBox
-        $check.Text = $tweak.name
-        $check.Tag = $tweak.id
-        $check.Checked = [bool]$tweak.enabled
-        $check.Location = New-Object System.Drawing.Point(12, 7)
-        $check.Size = New-Object System.Drawing.Size(716, 24)
-        $check.ForeColor = $colors.text
-        $check.BackColor = $colors.panel
-        $check.FlatStyle = 'Flat'
-        $row.Controls.Add($check)
+        foreach ($tweak in @($Config.tweaks | Where-Object { $_.category -eq $category })) {
+            $row = New-Object System.Windows.Forms.Panel
+            $row.Size = New-Object System.Drawing.Size(736, 54)
+            $row.BackColor = $colors.panel
+            $row.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 6)
 
-        if ($tweak.description) {
-            $description = New-Object System.Windows.Forms.Label
-            $description.Text = $tweak.description
-            $description.ForeColor = $colors.muted
-            $description.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
-            $description.Location = New-Object System.Drawing.Point(34, 30)
-            $description.Size = New-Object System.Drawing.Size(698, 18)
-            $row.Controls.Add($description)
+            $check = New-Object System.Windows.Forms.CheckBox
+            $check.Text = $tweak.name
+            $check.Tag = $tweak.id
+            $check.Checked = [bool]$tweak.enabled
+            $check.Location = New-Object System.Drawing.Point(12, 7)
+            $check.Size = New-Object System.Drawing.Size(708, 24)
+            $check.ForeColor = $colors.text
+            $check.BackColor = $colors.panel
+            $check.FlatStyle = 'Flat'
+            $row.Controls.Add($check)
+
+            if ($tweak.description) {
+                $description = New-Object System.Windows.Forms.Label
+                $description.Text = $tweak.description
+                $description.ForeColor = $colors.muted
+                $description.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
+                $description.Location = New-Object System.Drawing.Point(34, 30)
+                $description.Size = New-Object System.Drawing.Size(690, 18)
+                $row.Controls.Add($description)
+            }
+
+            $flowTweaks.Controls.Add($row)
+            $script:TweakChecks[$tweak.id] = $check
+            $script:TweakModels[$tweak.id] = $tweak
         }
-
-        $flowTweaks.Controls.Add($row)
-        $script:TweakChecks[$tweak.id] = $check
     }
 
     if ($flowTweaks.Controls.Count -eq 0) {
@@ -2481,7 +2683,7 @@ function Show-Gui {
         $lblNoTweaks.Text = 'No hay ajustes configurados.'
         $lblNoTweaks.ForeColor = $colors.muted
         $lblNoTweaks.AutoSize = $true
-        $lblNoTweaks.Location = New-Object System.Drawing.Point(24, 90)
+        $lblNoTweaks.Location = New-Object System.Drawing.Point(24, 130)
         $tabTweaks.Controls.Add($lblNoTweaks)
     }
 
@@ -2846,6 +3048,11 @@ Accesos directos: $(@($Config.shortcuts).Count)
         $btnInstalledOnly.Enabled = -not $Running
         $btnApplyTweaks.Enabled = -not $Running
         $btnUndoTweaks.Enabled = -not $Running
+        $btnPresetRecommended.Enabled = -not $Running
+        $btnPresetMinimal.Enabled = -not $Running
+        $btnPresetAdvanced.Enabled = -not $Running
+        $btnPresetAll.Enabled = -not $Running
+        $btnPresetClear.Enabled = -not $Running
         $btnUpdatesAll.Enabled = (-not $Running) -and $wingetOk
         $btnRefreshState.Enabled = -not $Running
         $btnConfigRefresh.Enabled = -not $Running
@@ -2926,6 +3133,23 @@ Accesos directos: $(@($Config.shortcuts).Count)
             if ($script:TweakChecks[$key].Checked) { $ids += $key }
         }
         return $ids
+    }
+
+    function Set-TweakPreset {
+        param([string]$Name)
+
+        foreach ($key in $script:TweakChecks.Keys) {
+            $model = $script:TweakModels[$key]
+            $checked = switch ($Name) {
+                'recommended' { $model.category -eq 'Esenciales' }
+                'minimal' { $key -in @('restorepoint', 'telemetry') }
+                'advanced' { $model.category -eq 'Avanzados' }
+                'all' { $true }
+                'clear' { $false }
+                default { $false }
+            }
+            $script:TweakChecks[$key].Checked = [bool]$checked
+        }
     }
 
     function Start-ElvisJob {
@@ -3143,6 +3367,12 @@ Accesos directos: $(@($Config.shortcuts).Count)
     })
 
     $btnUpgradeAll.Add_Click({ Start-UpgradeAll })
+
+    $btnPresetRecommended.Add_Click({ Set-TweakPreset -Name 'recommended' })
+    $btnPresetMinimal.Add_Click({ Set-TweakPreset -Name 'minimal' })
+    $btnPresetAdvanced.Add_Click({ Set-TweakPreset -Name 'advanced' })
+    $btnPresetAll.Add_Click({ Set-TweakPreset -Name 'all' })
+    $btnPresetClear.Add_Click({ Set-TweakPreset -Name 'clear' })
 
     $btnApplyTweaks.Add_Click({
         if ($script:InstallProcess -and -not $script:InstallProcess.HasExited) { return }
@@ -3489,7 +3719,7 @@ function Invoke-BuildExe {
         title      = $Config.appName
         description = 'Instalador de programas y ajustes para Windows'
         product    = $Config.appName
-        version    = '1.2.0.0'
+        version    = '1.3.0.0'
     }
 
     $iconPath = Join-Path $script:ScriptDir 'Resources\ElvisLab.ico'
@@ -3550,11 +3780,15 @@ function Start-ElevatedProcess {
 
     $arguments.Add('-ConfigPath'); $arguments.Add(('"{0}"' -f $ConfigPath))
     if ($Headless) { $arguments.Add('-Headless') }
-    if ($Install) { $arguments.Add('-Install'); $arguments.Add(('"{0}"' -f $Install)) }
+    if ($Install -and @($Install).Count -gt 0) {
+        $arguments.Add('-Install')
+        $arguments.Add(('"{0}"' -f (@($Install) -join ',')))
+    }
     if ($NoTweaks) {
         $arguments.Add('-NoTweaks')
-    } elseif ($Tweaks) {
-        $arguments.Add('-Tweaks'); $arguments.Add(('"{0}"' -f $Tweaks))
+    } elseif ($Tweaks -and @($Tweaks).Count -gt 0) {
+        $arguments.Add('-Tweaks')
+        $arguments.Add(('"{0}"' -f (@($Tweaks) -join ',')))
     }
     if ($Shortcuts) { $arguments.Add('-Shortcuts') }
     if ($DryRun) { $arguments.Add('-DryRun') }

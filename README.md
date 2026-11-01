@@ -101,9 +101,31 @@ La ventana se abre centrada. Si no eres administrador, el script pide elevación
 
 ### Pestaña Ajustes
 
-- Marca los ajustes y pulsa **Ejecutar ajustes marcados**.
-- El punto de restauración (si está marcado) se ejecuta primero.
+- Los ajustes están agrupados en **Esenciales**, **Interfaz** y **Avanzados**.
+- Presets rápidos:
+  - **Recomendado**: marca todos los de la categoría *Esenciales*.
+  - **Minimo**: marca solo punto de restauración y telemetría.
+  - **Avanzados**: marca los de la categoría *Avanzados*.
+  - **Todo / Limpiar**: marca o desmarca todo.
+- Por defecto solo vienen marcados **punto de restauración** y **telemetría**; el resto se activa manualmente.
+- **Ejecutar ajustes marcados** aplica la selección sin instalar programas.
+- El punto de restauración se ejecuta primero.
 - **Deshacer seleccionados** revierte los ajustes que lo permitan. Los puntos de restauración no se deshacen desde aquí.
+
+Tweaks incluidos:
+
+| Categoría | Tweaks |
+| --- | --- |
+| Esenciales | Punto de restauración, telemetría, historial de actividad, ubicación, características de consumidor, optimización de entrega, widgets, apps en segundo plano, búsqueda web en Inicio. |
+| Interfaz | Tema oscuro, extensiones de archivo, archivos ocultos, iconos centrados, modo juego, finalizar tarea con clic derecho. |
+| Avanzados | Rutas largas, inicio de sesión detallado, hibernación, servicio DiagTrack, informes de errores (WerSvc). |
+
+Notas:
+
+- **Rutas largas** requiere reiniciar.
+- **Hibernación** desactiva también el inicio rápido.
+- Los tweaks de servicios detienen el servicio y cambian su tipo de inicio; se pueden restaurar con **Deshacer**.
+- Los tweaks de registro se aplican en `HKLM` o `HKCU` según corresponda.
 
 ### Pestaña Actualizar
 
@@ -187,7 +209,7 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 ```json
 {
   "appName": "ElvisLab",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "logDirectory": "%LOCALAPPDATA%\\ElvisLab\\logs",
   "files": [
     {
@@ -227,8 +249,9 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
   "tweaks": [
     {
       "id": "telemetry",
-      "name": "Desactivar telemetria de Windows",
+      "name": "Telemetria de Windows - Desactivar",
       "type": "registry",
+      "category": "Esenciales",
       "enabled": true,
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
       "valueName": "AllowTelemetry",
@@ -288,11 +311,28 @@ Si el programa no está instalado, el acceso se omite con una advertencia.
 
 | Campo | Descripción |
 | --- | --- |
-| `id`, `name`, `enabled` | Identificador, texto y estado inicial. |
-| `type` | `registry` o `restorepoint`. |
-| `path`, `valueName`, `value`, `kind` | Clave, valor y tipo de registro (`DWord`, `String`, etc.). |
-| `undo` | `{"action":"remove"}` elimina el valor al deshacer. `{"action":"set","value":1,"kind":"DWord"}` lo restaura. |
+| `id`, `name`, `enabled` | Identificador, texto y estado inicial del checkbox. |
+| `category` | Agrupación en la interfaz (`Esenciales`, `Interfaz`, `Avanzados`, etc.). |
+| `type` | `registry`, `restorepoint`, `service` o `hibernation`. |
 | `description` | Texto de ayuda. |
+
+Tipos:
+
+- **`registry`**: usa `path`, `valueName`, `value` y `kind` para un solo valor, o un array `values` para varios:
+  ```json
+  "values": [
+    { "path": "HKCU:\\...", "valueName": "A", "value": 1, "kind": "DWord", "undo": { "action": "remove" } },
+    { "path": "HKCU:\\...", "valueName": "B", "value": 0, "kind": "DWord", "undo": { "action": "set", "value": 1, "kind": "DWord" } }
+  ]
+  ```
+- **`restorepoint`**: crea un punto de restauración; no tiene undo.
+- **`service`**: `serviceName`, `startupType` (`Automatic`, `Manual`, `Disabled`), `stopService`, `undoStartupType`, `undoStartService`.
+- **`hibernation`**: `action` = `disable` o `enable`; el undo aplica lo contrario.
+
+El `undo` de un valor de registro puede ser:
+
+- `{"action":"remove"}`: elimina el valor al deshacer.
+- `{"action":"set","value":1,"kind":"DWord"}`: lo restaura a un valor concreto.
 
 Los tweaks `restorepoint` se ejecutan antes que los demás.
 
@@ -381,6 +421,7 @@ en la misma carpeta y no está firmado.
 - La desinstalación depende de que winget reconozca el programa.
 - El motor Directo usa versiones fijadas; no busca automáticamente la última versión.
 - Solo se incluyen 5 programas; añade más en `config.json`.
+- Los tweaks son un subconjunto curado de WinUtil: no se incluyen eliminación de Edge/OneDrive, DNS, planes de energía, AppX ni limpieza de disco.
 
 ---
 
