@@ -10,7 +10,7 @@
 # ============================================================================
 [CmdletBinding()]
 param(
-    [string]$PackageUrl = $(if ($env:ELVISLAB_PACKAGE_URL) { $env:ELVISLAB_PACKAGE_URL } else { 'https://github.com/USUARIO/ElvisLab/releases/latest/download/ElvisLab.zip' }),
+    [string]$PackageUrl = $(if ($env:ELVISLAB_PACKAGE_URL) { $env:ELVISLAB_PACKAGE_URL } else { 'https://github.com/asechos/ElvisLab/releases/latest/download/ElvisLab.zip' }),
     [string]$DataDir = "$env:LOCALAPPDATA\ElvisLab",
     [switch]$ResetConfig,
     [switch]$Headless,
