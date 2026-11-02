@@ -18,6 +18,9 @@
 .PARAMETER Headless
     Ejecuta sin interfaz grafica.
 
+.PARAMETER HideConsole
+    Oculta la consola de PowerShell antes de mostrar la interfaz. Lo usa el bootstrap remoto.
+
 .PARAMETER Install
     Lista de ids de programas separados por comas (solo -Headless).
     Si se omite, se instalan todos los definidos en config.json.
@@ -74,6 +77,7 @@
 param(
     [string]$ConfigPath = '',
     [switch]$Headless,
+    [switch]$HideConsole,
     [string[]]$Install = @(),
     [string[]]$Tweaks = @(),
     [switch]$NoTweaks,
@@ -206,6 +210,10 @@ Write-LogLine ("{0} {1} iniciado. Configuracion: {2}" -f $Config.appName, $Confi
 
 if ($Headless) {
     exit (Invoke-HeadlessMain -Config $Config)
+}
+
+if ($HideConsole) {
+    Hide-ElvisConsole
 }
 
 Show-Gui -Config $Config

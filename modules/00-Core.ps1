@@ -73,6 +73,25 @@ function Test-IsAdmin {
     }
 }
 
+function Hide-ElvisConsole {
+    try {
+        if (-not ('ElvisConsoleWindow' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class ElvisConsoleWindow {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+}
+'@
+        }
+        $handle = [ElvisConsoleWindow]::GetConsoleWindow()
+        if ($handle -ne [IntPtr]::Zero) {
+            [ElvisConsoleWindow]::ShowWindow($handle, 0) | Out-Null
+        }
+    } catch { }
+}
+
 function New-LogFile {
     param($Config)
 

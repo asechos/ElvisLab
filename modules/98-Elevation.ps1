@@ -43,6 +43,7 @@ function Start-ElevatedProcess {
     }
     if ($Shortcuts) { $arguments.Add('-Shortcuts') }
     if ($DryRun) { $arguments.Add('-DryRun') }
+    if ($HideConsole) { $arguments.Add('-HideConsole') }
     if ($Backend -and $Backend -ne 'direct') { $arguments.Add('-Backend'); $arguments.Add($Backend) }
     if ($ApplyOnly) { $arguments.Add('-ApplyOnly') }
     if ($UndoTweaks) { $arguments.Add('-UndoTweaks') }
