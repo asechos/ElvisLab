@@ -1,12 +1,12 @@
 # ============================================================================
 # ElvisLab - Bootstrap remoto para irm ... | iex
 # ============================================================================
-# Ejecuta la app desde un paquete ZIP publicado en una URL HTTPS.
+# Ejecuta la app desde un release o, si no existe, desde la rama master.
 # La app se instala en %LOCALAPPDATA%\ElvisLab\app-* y la configuracion
 # del usuario se conserva en %LOCALAPPDATA%\ElvisLab\config.json.
 #
-# Antes de publicar, cambia $PackageUrl por la URL real del ZIP o define
-# la variable de entorno ELVISLAB_PACKAGE_URL.
+# Repositorio: https://github.com/asechos/ElvisLab
+# Release: https://github.com/asechos/ElvisLab/releases/latest/download/ElvisLab.zip
 # ============================================================================
 [CmdletBinding()]
 param(
@@ -63,7 +63,17 @@ try {
 
     Write-Host 'ElvisLab: descargando paquete...' -ForegroundColor Cyan
     if ($PackageUrl -match '^https?://') {
-        Invoke-WebRequest -Uri $PackageUrl -OutFile $zipPath -UseBasicParsing
+        try {
+            Invoke-WebRequest -Uri $PackageUrl -OutFile $zipPath -UseBasicParsing
+        } catch {
+            if ($PackageUrl -match '^https://github\.com/asechos/ElvisLab/releases/') {
+                $archiveUrl = 'https://github.com/asechos/ElvisLab/archive/refs/heads/master.zip'
+                Write-Host 'ElvisLab: no hay release disponible; usando la rama master.' -ForegroundColor Yellow
+                Invoke-WebRequest -Uri $archiveUrl -OutFile $zipPath -UseBasicParsing
+            } else {
+                throw
+            }
+        }
     } else {
         Copy-Item -LiteralPath $PackageUrl -Destination $zipPath -Force
     }

@@ -250,55 +250,61 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 
 ## Ejecución remota (`irm ... | iex`)
 
+Repositorio publicado: **https://github.com/asechos/ElvisLab** (rama `master`).
+
 WinUtil es un único script; ElvisLab usa módulos y `config.json`. Para tener el mismo flujo de un solo
 comando se usa un **bootstrap**: descarga un ZIP, lo instala en `%LOCALAPPDATA%\ElvisLab` y ejecuta la app.
 
-### Publicar el paquete
+### Uso directo (release o master)
 
-1. Genera los paquetes:
-   ```powershell
-   .\tools\Build-Package.ps1
-   ```
-   Crea `dist\ElvisLab.zip` (código fuente) y, si existe el `.exe`, `dist\ElvisLab-portable.zip`.
-
-2. Sube `dist\ElvisLab.zip` a un **release público de GitHub** como asset. La URL será:
-   ```text
-   https://github.com/USUARIO/ElvisLab/releases/latest/download/ElvisLab.zip
-   ```
-
-3. Edita `web\Install-ElvisLab.ps1` y cambia `$PackageUrl` por esa URL, o define la variable de entorno:
-   ```powershell
-   $env:ELVISLAB_PACKAGE_URL = 'https://.../ElvisLab.zip'
-   ```
-
-4. Publica `web\Install-ElvisLab.ps1` en GitHub raw o en tu web.
-
-### Un solo comando
+El bootstrap intenta primero el release `ElvisLab.zip`; si no existe, descarga la rama `master` automáticamente.
 
 **GUI:**
 ```powershell
-irm https://raw.githubusercontent.com/USUARIO/ElvisLab/main/web/Install-ElvisLab.ps1 | iex
+irm https://raw.githubusercontent.com/asechos/ElvisLab/master/web/Install-ElvisLab.ps1 | iex
 ```
 
 **Headless / con argumentos** (mismo patrón que WinUtil con `-Config -Run`):
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/USUARIO/ElvisLab/main/web/Install-ElvisLab.ps1))) `
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/asechos/ElvisLab/master/web/Install-ElvisLab.ps1))) `
   -Headless -Install python,git -NoTweaks
 ```
 
 **SelfTest:**
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/USUARIO/ElvisLab/main/web/Install-ElvisLab.ps1))) -SelfTest
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/asechos/ElvisLab/master/web/Install-ElvisLab.ps1))) -SelfTest
 ```
 
-**Usando otro ZIP:**
+**Usando otro ZIP o un release:**
 ```powershell
-& ([scriptblock]::Create((irm https://.../Install-ElvisLab.ps1))) -PackageUrl 'https://.../ElvisLab.zip'
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/asechos/ElvisLab/master/web/Install-ElvisLab.ps1))) `
+  -PackageUrl 'https://github.com/asechos/ElvisLab/releases/latest/download/ElvisLab.zip'
 ```
+
+### Release opcional (recomendado para estabilidad)
+
+El bootstrap usa por defecto `https://github.com/asechos/ElvisLab/releases/latest/download/ElvisLab.zip`
+y cae a `master` si el release no existe. Si quieres una versión fija:
+
+1. Genera el paquete:
+   ```powershell
+   .\tools\Build-Package.ps1
+   ```
+   Crea `dist\ElvisLab.zip` y `dist\ElvisLab-portable.zip`.
+
+2. Sube `dist\ElvisLab.zip` a un release público como asset llamado `ElvisLab.zip`.
+   Con ese nombre, el bootstrap lo usará automáticamente.
+
+3. Para usar otro ZIP o una URL distinta, pasa `-PackageUrl` o define:
+   ```powershell
+   $env:ELVISLAB_PACKAGE_URL = 'https://.../ElvisLab.zip'
+   ```
+
+4. Si cambias de repositorio, actualiza `$PackageUrl` en `web\Install-ElvisLab.ps1`.
 
 ### Qué hace el bootstrap
 
-- Descarga el ZIP por HTTPS.
+- Descarga el ZIP del release o de la rama `master`.
 - Crea una versión en `%LOCALAPPDATA%\ElvisLab\app-<fecha>-<id>`.
 - Conserva tu configuración en `%LOCALAPPDATA%\ElvisLab\config.json`.
 - Desbloquea los archivos descargados.
@@ -310,7 +316,7 @@ irm https://raw.githubusercontent.com/USUARIO/ElvisLab/main/web/Install-ElvisLab
 
 | Parámetro | Descripción |
 | --- | --- |
-| `-PackageUrl` | URL o ruta local del ZIP. |
+| `-PackageUrl` | URL o ruta local del ZIP. Por defecto, el release; si no existe, `master`. |
 | `-DataDir` | Carpeta de datos. Por defecto `%LOCALAPPDATA%\ElvisLab`. |
 | `-ResetConfig` | Reemplaza la config central por la del paquete. |
 | `-Headless` | Ejecuta sin interfaz. |
@@ -323,8 +329,9 @@ irm https://raw.githubusercontent.com/USUARIO/ElvisLab/main/web/Install-ElvisLab
 
 ### Seguridad y notas
 
-- `irm ... | iex` ejecuta código remoto. Usa **tu propia URL HTTPS**, fija un release/commit y no ejecutes URLs de terceros.
-- El repositorio debe ser público para que raw/release funcionen sin autenticación.
+- `irm ... | iex` ejecuta código remoto. Usa la URL de tu repositorio y no ejecutes URLs de terceros.
+- La rama `master` cambia con cada push. Para producción, crea un release y fija esa URL.
+- El repositorio debe ser público para que raw, archive y release funcionen sin autenticación.
 - La GUI y las instalaciones requieren Administrador; en sesiones remotas usa una sesión elevada o una tarea programada.
 - Cierra la app antes de actualizar; si un archivo está en uso, la actualización puede fallar.
 - Al actualizar se conserva la config central. Si quieres los valores nuevos del paquete, usa `-ResetConfig`
