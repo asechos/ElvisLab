@@ -266,7 +266,7 @@ function Show-Gui {
     $tabUpdates.Controls.Add($lblUpdatesTitle)
 
     $lblUpdatesHint = New-Object System.Windows.Forms.Label
-    $lblUpdatesHint.Text = 'Actualiza los programas gestionados con winget y abre Windows Update.'
+    $lblUpdatesHint.Text = 'Actualiza los programas gestionados, todas las apps con winget o Windows Update.'
     $lblUpdatesHint.ForeColor = $colors.muted
     $lblUpdatesHint.Location = New-Object System.Drawing.Point(24, 50)
     $lblUpdatesHint.Size = New-Object System.Drawing.Size(740, 20)
@@ -299,6 +299,9 @@ function Show-Gui {
     $btnRefreshState = New-FlatButton -Text 'Refrescar estado' -X 276 -Y 238 -Width 160 -Height 40
     $tabUpdates.Controls.Add($btnRefreshState)
 
+    $btnWingetAll = New-FlatButton -Text 'Actualizar todo (winget)' -X 448 -Y 238 -Width 290 -Height 40
+    $tabUpdates.Controls.Add($btnWingetAll)
+
     $script:WingetVersion = ''
     if (Test-WingetAvailable) {
         try { $script:WingetVersion = ((& winget --version 2>&1 | Out-String).Trim()) } catch { }
@@ -329,6 +332,9 @@ function Show-Gui {
 
     $btnOpenUpdateHistory = New-FlatButton -Text 'Ver historial' -X 246 -Y 382 -Width 150 -Height 40
     $tabUpdates.Controls.Add($btnOpenUpdateHistory)
+
+    $btnWindowsUpdate = New-FlatButton -Text 'Instalar actualizaciones pendientes' -X 408 -Y 382 -Width 330 -Height 40
+    $tabUpdates.Controls.Add($btnWindowsUpdate)
 
     $lblUpdatesNote = New-Object System.Windows.Forms.Label
     $lblUpdatesNote.Text = 'WinUtil tambien modifica las politicas de Windows Update. Aqui no se desactivan actualizaciones por seguridad.'
@@ -903,6 +909,8 @@ Accesos directos: $(@($Config.shortcuts).Count)
         $btnPresetAll.Enabled = -not $Running
         $btnPresetClear.Enabled = -not $Running
         $btnUpdatesAll.Enabled = (-not $Running) -and $wingetOk
+        $btnWingetAll.Enabled = (-not $Running) -and $wingetOk
+        $btnWindowsUpdate.Enabled = -not $Running
         $btnRefreshState.Enabled = -not $Running
         $btnConfigRefresh.Enabled = -not $Running
         $btnRepairWinget.Enabled = (-not $Running) -and $wingetOk
@@ -1211,6 +1219,32 @@ Accesos directos: $(@($Config.shortcuts).Count)
         }
     }
 
+    function Start-WingetUpgradeAll {
+        if (-not (Test-WingetAvailable)) {
+            [System.Windows.Forms.MessageBox]::Show('winget no esta disponible. Instala App Installer desde Microsoft Store.', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+            return
+        }
+        if ($script:InstallProcess -and -not $script:InstallProcess.HasExited) { return }
+
+        $answer = [System.Windows.Forms.MessageBox]::Show('Se actualizaran con winget TODOS los programas del sistema que tengan actualizacion disponible. Puede tardar varios minutos. Continuar?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        if (Start-ElvisJob -ExtraArguments @('-UpgradeAll') -InitialStatus 'Buscando actualizaciones con winget...' -OpenLogTab) {
+            Add-UiMessage 'Actualizando todas las aplicaciones con winget...' 'INFO'
+        }
+    }
+
+    function Start-WindowsUpdateInstall {
+        if ($script:InstallProcess -and -not $script:InstallProcess.HasExited) { return }
+
+        $answer = [System.Windows.Forms.MessageBox]::Show('Se buscaran, descargaran e instalaran las actualizaciones pendientes de Windows Update. Puede tardar mucho tiempo y requerir reinicio. Continuar?', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+        if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+        if (Start-ElvisJob -ExtraArguments @('-WindowsUpdate') -InitialStatus 'Buscando actualizaciones de Windows...' -OpenLogTab) {
+            Add-UiMessage 'Instalando actualizaciones de Windows...' 'INFO'
+        }
+    }
+
     $btnUninstall.Add_Click({
         if (-not (Test-WingetAvailable)) {
             [System.Windows.Forms.MessageBox]::Show('winget no esta disponible. Instala App Installer desde Microsoft Store.', 'ElvisLab', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
@@ -1287,6 +1321,8 @@ Accesos directos: $(@($Config.shortcuts).Count)
     })
 
     $btnUpdatesAll.Add_Click({ Start-UpgradeAll })
+    $btnWingetAll.Add_Click({ Start-WingetUpgradeAll })
+    $btnWindowsUpdate.Add_Click({ Start-WindowsUpdateInstall })
 
     $btnRefreshState.Add_Click({
         Rebuild-ProgramCards
@@ -1531,6 +1567,7 @@ Accesos directos: $(@($Config.shortcuts).Count)
         $btnUninstall.Enabled = $false
         $btnUpgradeAll.Enabled = $false
         $btnUpdatesAll.Enabled = $false
+        $btnWingetAll.Enabled = $false
         $btnRepairWinget.Enabled = $false
     }
 

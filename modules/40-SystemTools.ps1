@@ -1,5 +1,5 @@
 # ============================================================================
-# ElvisLab - DNS, planes de energia y limpieza de temporales
+# ElvisLab - DNS, planes de energia, temporales y Windows Update
 # ============================================================================
 
 function Clear-ElvisTempFiles {
@@ -195,4 +195,184 @@ function Disable-UltimatePerformance {
     Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
     Write-LogLine ("Planes Ultimate Performance eliminados: {0}." -f $deleted) 'OK'
     return $deleted
+}
+
+# ----------------------------------------------------------------------------
+# Windows Update: buscar, descargar e instalar actualizaciones pendientes
+# ----------------------------------------------------------------------------
+
+function Get-WindowsUpdateResultText {
+    param([int]$Code)
+
+    switch ($Code) {
+        0 { return 'no iniciado' }
+        1 { return 'en curso' }
+        2 { return 'correcto' }
+        3 { return 'correcto con advertencias' }
+        4 { return 'fallido' }
+        5 { return 'abortado' }
+        default { return "codigo $Code" }
+    }
+}
+
+function Invoke-ElvisWindowsUpdate {
+    param(
+        [switch]$DryRun,
+        [scriptblock]$OnProgress,
+        [scriptblock]$ShouldCancel
+    )
+
+    if (-not $DryRun -and -not (Test-IsAdmin)) {
+        throw 'Se requieren privilegios de administrador para instalar actualizaciones de Windows.'
+    }
+
+    if ($OnProgress) { & $OnProgress 5 'Buscando actualizaciones de Windows...' | Out-Null }
+
+    $session = $null
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $searchResult = $searcher.Search('IsInstalled=0 and IsHidden=0')
+        $updates = @($searchResult.Updates)
+    } catch {
+        throw ("No se pudo consultar Windows Update: {0}" -f $_.Exception.Message)
+    }
+
+    $summary = [pscustomobject]@{
+        Pending        = $updates.Count
+        Installed      = 0
+        Failed         = 0
+        RebootRequired = $false
+        Cancelled      = $false
+        DryRun         = [bool]$DryRun
+        Details        = @()
+    }
+
+    if ($updates.Count -eq 0) {
+        if ($OnProgress) { & $OnProgress 100 'Sin actualizaciones pendientes.' | Out-Null }
+        return $summary
+    }
+
+    Write-LogLine ("Windows Update: {0} actualizacion(es) pendiente(s)." -f $updates.Count) 'INFO'
+
+    $details = New-Object System.Collections.Generic.List[object]
+    foreach ($update in $updates) {
+        $size = 0
+        try { $size = [long]$update.MaxDownloadSize } catch { }
+        Write-LogLine ("  - {0} ({1:N1} MB)" -f [string]$update.Title, ($size / 1MB)) 'INFO'
+        $details.Add([pscustomobject]@{
+            Title  = [string]$update.Title
+            Result = 'pending'
+            Code   = 0
+        }) | Out-Null
+    }
+
+    if ($DryRun) {
+        Write-LogLine 'DryRun: no se descargan ni instalan actualizaciones de Windows.' 'WARN'
+        $summary.Details = @($details)
+        if ($OnProgress) { & $OnProgress 100 'Busqueda de Windows Update completada.' | Out-Null }
+        return $summary
+    }
+
+    if ($ShouldCancel -and (& $ShouldCancel)) {
+        $summary.Cancelled = $true
+        $summary.Details = @($details)
+        return $summary
+    }
+
+    # Acepta licencias y prepara la coleccion de descarga.
+    $toDownload = @()
+    foreach ($update in $updates) {
+        if (-not $update.EulaAccepted) {
+            try { $update.AcceptEULA() } catch {
+                Write-LogLine ("No se pudo aceptar la licencia de: {0}" -f $update.Title) 'WARN'
+            }
+        }
+        if (-not $update.IsDownloaded) { $toDownload += $update }
+    }
+
+    if ($toDownload.Count -gt 0) {
+        if ($OnProgress) { & $OnProgress 15 ("Descargando {0} actualizacion(es)..." -f $toDownload.Count) | Out-Null }
+        Write-LogLine ("Windows Update: descargando {0} actualizacion(es)..." -f $toDownload.Count) 'INFO'
+        try {
+            $collection = New-Object -ComObject Microsoft.Update.UpdateColl
+            foreach ($update in $toDownload) { $collection.Add($update) | Out-Null }
+            $downloader = $session.CreateUpdateDownloader()
+            $downloader.Updates = $collection
+            $downloadResult = $downloader.Download()
+            $downloadCode = [int]$downloadResult.ResultCode
+            if ($downloadCode -in @(2, 3)) {
+                Write-LogLine ("Windows Update: descarga completada ({0})." -f (Get-WindowsUpdateResultText -Code $downloadCode)) 'OK'
+            } else {
+                Write-LogLine ("Windows Update: la descarga termino con {0}." -f (Get-WindowsUpdateResultText -Code $downloadCode)) 'WARN'
+            }
+        } catch {
+            Write-LogLine ("Windows Update: error al descargar: {0}" -f $_.Exception.Message) 'ERROR'
+        }
+    }
+
+    # Instala una por una para poder cancelar entre actualizaciones y registrar cada resultado.
+    $installer = $session.CreateUpdateInstaller()
+    for ($i = 0; $i -lt $updates.Count; $i++) {
+        $update = $updates[$i]
+
+        if (-not $update.IsDownloaded) {
+            $details[$i].Result = 'failed'
+            $details[$i].Code = 4
+            $summary.Failed++
+            Write-LogLine ("Windows Update: no se pudo descargar {0}." -f $update.Title) 'ERROR'
+            continue
+        }
+
+        if ($ShouldCancel -and (& $ShouldCancel)) {
+            $summary.Cancelled = $true
+            break
+        }
+
+        $percent = 25 + [int](70 * $i / [Math]::Max(1, $updates.Count))
+        if ($OnProgress) { & $OnProgress $percent ("Instalando: {0}..." -f $update.Title) | Out-Null }
+        Write-LogLine ("Instalando actualizacion: {0}..." -f $update.Title) 'INFO'
+
+        $code = 4
+        try {
+            $collection = New-Object -ComObject Microsoft.Update.UpdateColl
+            $collection.Add($update) | Out-Null
+            $installer.Updates = $collection
+            $installResult = $installer.Install()
+            try {
+                $code = [int]$installResult.GetUpdateResult(0).ResultCode
+            } catch {
+                $code = [int]$installResult.ResultCode
+            }
+            try {
+                if ($installResult.RebootRequired -or $installer.RebootRequired) { $summary.RebootRequired = $true }
+            } catch { }
+        } catch {
+            Write-LogLine ("Windows Update: error al instalar {0}: {1}" -f $update.Title, $_.Exception.Message) 'ERROR'
+        }
+
+        $details[$i].Code = $code
+        if ($code -in @(2, 3)) {
+            $summary.Installed++
+            $details[$i].Result = 'installed'
+            Write-LogLine ("OK: {0} ({1})." -f $update.Title, (Get-WindowsUpdateResultText -Code $code)) 'OK'
+        } else {
+            $summary.Failed++
+            $details[$i].Result = 'failed'
+            Write-LogLine ("ERROR: {0} ({1})." -f $update.Title, (Get-WindowsUpdateResultText -Code $code)) 'ERROR'
+        }
+    }
+
+    if ($summary.Cancelled) {
+        Write-LogLine 'Windows Update cancelado por el usuario.' 'WARN'
+    }
+
+    $summary.Details = @($details)
+    Write-LogLine ("Windows Update: {0} instalada(s), {1} fallida(s)." -f $summary.Installed, $summary.Failed) $(if ($summary.Failed -gt 0) { 'WARN' } else { 'OK' })
+    if ($summary.RebootRequired) {
+        Write-LogLine 'Windows Update: se requiere reiniciar el equipo para completar la instalacion.' 'WARN'
+    }
+    if ($OnProgress -and -not $summary.Cancelled) { & $OnProgress 100 'Windows Update completado.' | Out-Null }
+
+    return $summary
 }

@@ -23,6 +23,8 @@ param(
     [switch]$ApplyOnly,
     [switch]$UndoTweaks,
     [switch]$Upgrade,
+    [switch]$UpgradeAll,
+    [switch]$WindowsUpdate,
     [switch]$Uninstall,
     [switch]$SelfTest
 )
@@ -46,7 +48,7 @@ function Test-BootstrapAdmin {
 $DataDir = [Environment]::ExpandEnvironmentVariables($DataDir)
 try { $DataDir = [System.IO.Path]::GetFullPath($DataDir) } catch { }
 
-$operationRequested = ($Install -or $Tweaks -or $NoTweaks -or $Shortcuts -or $DryRun -or $Backend -or $ApplyOnly -or $UndoTweaks -or $Upgrade -or $Uninstall)
+$operationRequested = ($Install -or $Tweaks -or $NoTweaks -or $Shortcuts -or $DryRun -or $Backend -or $ApplyOnly -or $UndoTweaks -or $Upgrade -or $UpgradeAll -or $WindowsUpdate -or $Uninstall)
 if ($operationRequested -and -not $Headless -and -not $SelfTest) {
     Write-Host 'ElvisLab: argumentos de operacion detectados; se usara modo Headless.' -ForegroundColor Yellow
     $Headless = $true
@@ -128,6 +130,8 @@ try {
     if ($ApplyOnly) { $appArgs += '-ApplyOnly' }
     if ($UndoTweaks) { $appArgs += '-UndoTweaks' }
     if ($Upgrade) { $appArgs += '-Upgrade' }
+    if ($UpgradeAll) { $appArgs += '-UpgradeAll' }
+    if ($WindowsUpdate) { $appArgs += '-WindowsUpdate' }
     if ($Uninstall) { $appArgs += '-Uninstall' }
     if (-not $SelfTest -and -not $Headless) { $appArgs += '-HideConsole' }
     $appArgs += @('-ConfigPath', $configPath)

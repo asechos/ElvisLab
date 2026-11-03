@@ -414,6 +414,97 @@ function Invoke-UninstallMain {
     return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
 }
 
+function Invoke-WindowsUpdateMain {
+    param($Config)
+
+    Initialize-Progress -Files @()
+    $script:Progress.status = 'Buscando actualizaciones de Windows...'
+    Write-ProgressState
+
+    if ($DryRun) {
+        Write-LogLine 'DryRun: solo se buscan actualizaciones de Windows.' 'WARN'
+    }
+
+    try {
+        $summary = Invoke-ElvisWindowsUpdate -DryRun:$DryRun -OnProgress {
+            param([int]$Percent, [string]$Status)
+            $script:Progress.percent = $Percent
+            $script:Progress.status = $Status
+            Write-ProgressState
+        } -ShouldCancel { Test-CancelRequested }
+    } catch {
+        Write-LogLine ("Windows Update: {0}" -f $_.Exception.Message) 'ERROR'
+        return (Complete-HeadlessRun -Success $false -Status 'Windows Update con errores.' -ExitCode 2)
+    }
+
+    if ($summary.Cancelled) {
+        return (Complete-HeadlessRun -Success $false -Status 'Cancelado por el usuario.' -ExitCode 3 -Cancelled)
+    }
+
+    if ($summary.DryRun) {
+        $status = "Windows Update: $($summary.Pending) actualizacion(es) pendiente(s)."
+        Write-LogLine $status 'OK'
+        return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
+    }
+
+    if ($summary.Pending -eq 0) {
+        $status = 'Windows Update: no hay actualizaciones pendientes.'
+        Write-LogLine $status 'OK'
+        return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
+    }
+
+    $status = "Windows Update: $($summary.Installed) instalada(s), $($summary.Failed) fallida(s)."
+    if ($summary.RebootRequired) { $status += ' Reinicio requerido.' }
+    $success = ($summary.Failed -eq 0)
+    Write-LogLine $status $(if ($success) { 'OK' } else { 'ERROR' })
+    return (Complete-HeadlessRun -Success $success -Status $status -ExitCode $(if ($success) { 0 } else { 2 }))
+}
+
+function Invoke-WingetUpgradeAllMain {
+    param($Config)
+
+    Initialize-Progress -Files @()
+    $script:Progress.status = 'Buscando actualizaciones con winget...'
+    Write-ProgressState
+
+    if (-not (Test-WingetAvailable)) {
+        Write-LogLine 'winget no esta disponible; no se pueden actualizar aplicaciones.' 'ERROR'
+        return (Complete-HeadlessRun -Success $false -Status 'winget no esta disponible.' -ExitCode 2)
+    }
+
+    if (Test-CancelRequested) {
+        return (Complete-HeadlessRun -Success $false -Status 'Cancelado por el usuario.' -ExitCode 3 -Cancelled)
+    }
+
+    try {
+        $summary = Invoke-ElvisWingetUpgradeAll -DryRun:$DryRun -OnProgress {
+            param([int]$Percent, [string]$Status)
+            $script:Progress.percent = $Percent
+            $script:Progress.status = $Status
+            Write-ProgressState
+        }
+    } catch {
+        Write-LogLine ("winget: {0}" -f $_.Exception.Message) 'ERROR'
+        return (Complete-HeadlessRun -Success $false -Status 'Actualizacion con errores.' -ExitCode 2)
+    }
+
+    if ($summary.DryRun) {
+        $status = "winget: $($summary.Pending) actualizacion(es) disponible(s)."
+        Write-LogLine $status 'OK'
+        return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
+    }
+
+    if ($summary.Pending -eq 0) {
+        $status = 'winget: no hay actualizaciones pendientes.'
+        Write-LogLine $status 'OK'
+        return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
+    }
+
+    $status = "winget: $($summary.Pending) actualizacion(es) procesada(s)."
+    Write-LogLine $status 'OK'
+    return (Complete-HeadlessRun -Success $true -Status $status -ExitCode 0)
+}
+
 function Set-InstallResult {
     param($File)
 
@@ -517,17 +608,31 @@ function Invoke-InstallMain {
                 Set-ProgressItem -Id $file.id -Status 'verifying' -Message ''
                 $script:Progress.status = "Verificando $($file.name)..."
                 Write-ProgressState
-                Test-FileIntegrity -File $file -Path $destination
 
-                if ($DryRun) {
-                    Set-ProgressItem -Id $file.id -Status 'downloaded' -Message 'Descargado y verificado'
-                    Write-LogLine "OK: $($file.name) descargado y verificado (DryRun)." 'OK'
-                } else {
-                    Set-ProgressItem -Id $file.id -Status 'installing' -Message ''
-                    $script:Progress.status = "Instalando $($file.name)..."
-                    Write-ProgressState
-                    Invoke-Installer -File $file -Path $destination
-                    Set-InstallResult -File $file
+                # El archivo se mantiene bloqueado en lectura desde la verificacion
+                # hasta el arranque del instalador para evitar que se reemplace (TOCTOU).
+                $verifiedFile = $null
+                try {
+                    $verifiedFile = [System.IO.File]::Open(
+                        $destination,
+                        [System.IO.FileMode]::Open,
+                        [System.IO.FileAccess]::Read,
+                        [System.IO.FileShare]::Read
+                    )
+                    Test-FileIntegrity -File $file -Path $destination
+
+                    if ($DryRun) {
+                        Set-ProgressItem -Id $file.id -Status 'downloaded' -Message 'Descargado y verificado'
+                        Write-LogLine "OK: $($file.name) descargado y verificado (DryRun)." 'OK'
+                    } else {
+                        Set-ProgressItem -Id $file.id -Status 'installing' -Message ''
+                        $script:Progress.status = "Instalando $($file.name)..."
+                        Write-ProgressState
+                        Invoke-Installer -File $file -Path $destination
+                        Set-InstallResult -File $file
+                    }
+                } finally {
+                    if ($verifiedFile) { $verifiedFile.Dispose() }
                 }
             }
 
@@ -597,6 +702,8 @@ function Invoke-HeadlessMain {
 
     if ($ApplyOnly) { return (Invoke-ApplyTweaksMain -Config $Config) }
     if ($UndoTweaks) { return (Invoke-UndoTweaksMain -Config $Config) }
+    if ($WindowsUpdate) { return (Invoke-WindowsUpdateMain -Config $Config) }
+    if ($UpgradeAll) { return (Invoke-WingetUpgradeAllMain -Config $Config) }
     if ($Upgrade) { return (Invoke-UpgradeMain -Config $Config) }
     if ($Uninstall) { return (Invoke-UninstallMain -Config $Config) }
     return (Invoke-InstallMain -Config $Config)

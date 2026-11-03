@@ -17,6 +17,8 @@ categoría, búsqueda y barra de progreso.
 - **Aplicar ajustes** del sistema de forma independiente (sin instalar programas), con punto de restauración primero.
 - **Deshacer ajustes** reversibles (por ejemplo, eliminar la política de telemetría).
 - **Actualizar** los programas gestionados con winget.
+- **Actualizar todo** con `winget upgrade --all` (todas las aplicaciones del sistema con actualización disponible).
+- **Windows Update**: busca, descarga e instala las actualizaciones pendientes de Windows.
 - **Desinstalar** programas con winget (solo los que winget reconozca).
 - **Crear accesos directos** en el Escritorio o menú Inicio, apuntando al programa realmente instalado.
 - **Herramientas**: panel de control clásico, conexiones de red, sonido, impresoras, programas y características,
@@ -54,7 +56,7 @@ ElvisLab\
 │   10-Config.ps1       Lectura y validacion de config.json
 │   20-Install.ps1      Descargas, verificacion, instaladores y winget
 │   30-Tweaks.ps1       Aplicacion y restauracion de tweaks
-│   40-SystemTools.ps1  DNS, planes de energia y limpieza de temporales
+│   40-SystemTools.ps1  DNS, energia, temporales y Windows Update
 │   50-Shortcuts.ps1    Accesos directos
 │   60-Headless.ps1     Modo desatendido y progreso de trabajos
 │   70-UiTypes.ps1      Controles WinForms personalizados
@@ -170,6 +172,11 @@ Notas:
 
 - Lista el estado de los programas gestionados.
 - **Actualizar todos los instalados**: ejecuta `winget upgrade` solo para los programas de `config.json`.
+- **Actualizar todo (winget)**: ejecuta `winget upgrade --all` para todas las aplicaciones del sistema que
+  tengan actualización disponible (no solo las de `config.json`). Antes de instalar, lista cuántas hay.
+- **Instalar actualizaciones pendientes**: usa la API COM de Windows Update para buscar, descargar e instalar
+  las actualizaciones pendientes. Se instalan una a una para poder cancelar entre ellas, y se registra el
+  resultado y si hace falta reiniciar.
 - **Abrir Windows Update / Ver historial**: abre las páginas de Configuración.
 - No se modifican las políticas de Windows Update (a diferencia de WinUtil). Es intencional para no dejar
   el sistema sin actualizaciones de seguridad.
@@ -223,6 +230,16 @@ Todos los comandos requieren Administrador (se solicita elevación automáticame
 # Actualizar con winget (todos los gestionados o solo algunos)
 .\ElvisLab.ps1 -Headless -Upgrade
 .\ElvisLab.ps1 -Headless -Upgrade -Install git,vlc
+
+# Actualizar con winget TODAS las aplicaciones del sistema
+.\ElvisLab.ps1 -Headless -UpgradeAll
+
+# Instalar las actualizaciones pendientes de Windows Update
+.\ElvisLab.ps1 -Headless -WindowsUpdate
+
+# Solo consultar qué hay pendiente (sin instalar)
+.\ElvisLab.ps1 -Headless -WindowsUpdate -DryRun
+.\ElvisLab.ps1 -Headless -UpgradeAll -DryRun
 
 # Desinstalar con winget
 .\ElvisLab.ps1 -Headless -Uninstall -Install vlc
@@ -324,7 +341,9 @@ y cae a `master` si el release no existe. Si quieres una versión fija:
 | `-Backend` | `direct` o `winget`. |
 | `-ApplyOnly`, `-UndoTweaks` | Solo ajustes. |
 | `-Upgrade`, `-Uninstall` | Actualizar/desinstalar con winget. |
-| `-Shortcuts`, `-DryRun` | Accesos y prueba de descarga. |
+| `-UpgradeAll` | `winget upgrade --all` (todas las aplicaciones del sistema). |
+| `-WindowsUpdate` | Busca, descarga e instala actualizaciones de Windows. |
+| `-Shortcuts`, `-DryRun` | Accesos directos y modo de prueba (no instala). |
 | `-SelfTest` | Diagnóstico sin instalar. |
 
 ### Seguridad y notas
@@ -411,7 +430,7 @@ y cae a `master` si el release no existe. Si quieres una versión fija:
 | `source` | URL **HTTPS** del instalador. |
 | `destination` | Nombre del archivo descargado (sin carpetas). |
 | `sha256` | Hash SHA256 esperado. Si está vacío, se puede usar la firma. |
-| `publisher` | Texto que debe aparecer en el sujeto del certificado Authenticode. |
+| `publisher` | Nombre (CN) u organización (O) exactos del certificado Authenticode. |
 | `allowUnverified` | Permite instalar sin hash ni firma (no recomendado). |
 | `installArgs` | Argumentos silenciosos del instalador. |
 | `installTimeoutSec` | Tiempo máximo de espera del instalador. |
@@ -423,7 +442,7 @@ y cae a `master` si el release no existe. Si quieres una versión fija:
 ### Verificación de integridad
 
 - Si hay `sha256`, se compara el hash del archivo descargado.
-- Si hay `publisher`, se exige firma Authenticode válida y que el certificado contenga ese texto.
+- Si hay `publisher`, se exige firma Authenticode válida y que el CN u O del certificado coincida exactamente con ese texto (sin distinguir mayúsculas).
 - Si no hay `sha256` ni `publisher`, el programa **no se instala** salvo que `allowUnverified` sea `true`.
 - Los 5 programas actuales están verificados:
   - Python, Notepad++, Git y VLC: SHA256 + firma.

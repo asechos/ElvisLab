@@ -36,6 +36,7 @@
 
 .PARAMETER DryRun
     Descarga y verifica los instaladores, pero no los ejecuta ni aplica tweaks.
+    Con -UpgradeAll o -WindowsUpdate solo consulta que hay pendiente, sin instalar.
 
 .PARAMETER Backend
     Motor de instalacion: direct (instalador oficial verificado) o winget.
@@ -48,6 +49,13 @@
 
 .PARAMETER Upgrade
     Actualiza con winget los programas seleccionados (o todos si no se indica -Install).
+
+.PARAMETER UpgradeAll
+    Actualiza con winget TODOS los programas del sistema que tengan actualizacion
+    disponible, no solo los gestionados en config.json.
+
+.PARAMETER WindowsUpdate
+    Busca, descarga e instala las actualizaciones pendientes de Windows Update.
 
 .PARAMETER Uninstall
     Desinstala con winget los programas seleccionados.
@@ -71,6 +79,12 @@
     .\ElvisLab.ps1 -SelfTest
 
 .EXAMPLE
+    .\ElvisLab.ps1 -Headless -UpgradeAll
+
+.EXAMPLE
+    .\ElvisLab.ps1 -Headless -WindowsUpdate
+
+.EXAMPLE
     .\ElvisLab.ps1 -Build
 #>
 [CmdletBinding()]
@@ -88,6 +102,8 @@ param(
     [switch]$ApplyOnly,
     [switch]$UndoTweaks,
     [switch]$Upgrade,
+    [switch]$UpgradeAll,
+    [switch]$WindowsUpdate,
     [switch]$Uninstall,
     [switch]$Build,
     [switch]$SelfTest,

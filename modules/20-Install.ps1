@@ -23,6 +23,7 @@ function Invoke-HttpDownload {
         $client.DefaultRequestHeaders.UserAgent.ParseAdd('ElvisLab/1.1') | Out-Null
     } catch { }
 
+    $response = $null
     try {
         $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
         if (-not $response.IsSuccessStatusCode) {
@@ -30,14 +31,22 @@ function Invoke-HttpDownload {
         }
 
         $total = $response.Content.Headers.ContentLength
-        $input = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+        $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+
+        # Limita cada lectura para que una conexion estancada no bloquee la descarga.
+        if ($stream.CanTimeout) {
+            try {
+                $stream.ReadTimeout = [int][Math]::Min(2147483647.0, ([double]$TimeoutSec * 1000))
+            } catch { }
+        }
+
         $output = [System.IO.File]::Create($Destination)
 
         try {
             $buffer = New-Object byte[] 131072
             [long]$received = 0
             $started = [DateTime]::UtcNow
-            while (($read = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
                 if (([DateTime]::UtcNow - $started).TotalSeconds -gt $TimeoutSec) {
                     throw ("La descarga supero el tiempo limite de {0} segundos." -f $TimeoutSec)
                 }
@@ -50,17 +59,41 @@ function Invoke-HttpDownload {
                     & $OnPercent ($received / [double]$total)
                 }
             }
+        } catch [System.Management.Automation.MethodInvocationException] {
+            $io = $_.Exception.InnerException
+            $web = if ($io) { $io.InnerException } else { $null }
+            if ($web -is [System.Net.WebException] -and $web.Status -eq [System.Net.WebExceptionStatus]::Timeout) {
+                throw ("La descarga supero el tiempo limite de {0} segundos." -f $TimeoutSec)
+            }
+            throw
         } finally {
             $output.Dispose()
-            $input.Dispose()
-            $response.Dispose()
+            $stream.Dispose()
         }
     } catch {
         Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue
         throw
     } finally {
+        if ($response) { $response.Dispose() }
         $client.Dispose()
     }
+}
+
+function Get-CertificatePublisherNames {
+    param([string]$Subject)
+
+    if (-not $Subject) { return @() }
+
+    $names = @()
+    foreach ($match in [regex]::Matches($Subject, '(?:^|,\s*)(?:CN|O)=("(?:\\.|[^"])*"|[^,]*)')) {
+        $value = $match.Groups[1].Value.Trim()
+        if ($value.Length -ge 2 -and $value.StartsWith('"') -and $value.EndsWith('"')) {
+            $value = $value.Substring(1, $value.Length - 2)
+            $value = $value.Replace('\"', '"').Replace('\,', ',')
+        }
+        if ($value) { $names += $value }
+    }
+    return $names
 }
 
 function Test-FileIntegrity {
@@ -83,9 +116,25 @@ function Test-FileIntegrity {
         if ($signature.Status -ne 'Valid') {
             throw "La firma digital no es valida ($($signature.Status))."
         }
-        $subject = ''
-        if ($signature.SignerCertificate) { $subject = $signature.SignerCertificate.Subject }
-        if ($subject.IndexOf($File.publisher, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+
+        $certificate = $signature.SignerCertificate
+        if (-not $certificate) {
+            throw 'La firma digital no incluye un certificado de firma.'
+        }
+
+        # Compara solo el nombre comun (CN) y la organizacion (O) del sujeto,
+        # no cualquier campo (por ejemplo, la localidad).
+        $subject = $certificate.Subject
+        $names = Get-CertificatePublisherNames -Subject $subject
+
+        $matched = $false
+        foreach ($name in $names) {
+            if ($name.Equals($File.publisher, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $matched = $true
+                break
+            }
+        }
+        if (-not $matched) {
             throw "La firma pertenece a '$subject' y no al editor esperado '$($File.publisher)'."
         }
         Write-LogLine "Firma digital verificada: $($File.publisher)" 'OK'
@@ -113,7 +162,13 @@ function Invoke-Installer {
 
     while (-not $process.HasExited) {
         if ($watch.Elapsed.TotalSeconds -gt $timeout) {
-            throw ("El instalador supero el tiempo limite de {0} segundos." -f $timeout)
+            # Detiene el instalador (y sus hijos) antes de informar del error.
+            try { & taskkill.exe /PID $process.Id /T /F 2>$null | Out-Null } catch { }
+            if (-not $process.HasExited) {
+                try { $process.Kill() } catch { }
+            }
+            try { [void]$process.WaitForExit(5000) } catch { }
+            throw ("El instalador supero el tiempo limite de {0} segundos y se detuvo." -f $timeout)
         }
         Start-Sleep -Milliseconds 500
     }
@@ -139,8 +194,39 @@ function Remove-AnsiSequences {
     param([string]$Text)
 
     if (-not $Text) { return '' }
-    $escaped = [regex]::Escape([string][char]27 + '[')
-    return [regex]::Replace($Text, $escaped + '[0-9;?]*[a-zA-Z]', '')
+
+    # OSC (titulo, hipervinculos), CSI (colores, cursores) y escapes de dos caracteres.
+    $clean = [regex]::Replace($Text, '\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)', '')
+    $clean = [regex]::Replace($clean, '\x1B\[[0-?]*[ -/]*[@-~]', '')
+    $clean = [regex]::Replace($clean, '\x1B[@-_]', '')
+    # Controles restantes: NUL, backspace, tabulador vertical, etc.
+    $clean = [regex]::Replace($clean, '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '')
+    # Normaliza CR y CRLF para que el registro tenga lineas reales.
+    return [regex]::Replace($clean, '\r\n?', "`n")
+}
+
+function Get-WingetDiagnosticLine {
+    param([string]$Output)
+
+    if (-not $Output) { return '' }
+
+    $lines = @($Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+    if ($lines.Count -eq 0) { return '' }
+
+    $pattern = 'not recognized|no installed package|no package|no applicable|no sources|failed|error|invalid|unable|hash|timed out|cancelled'
+    foreach ($line in $lines) {
+        if ($line -match $pattern) { return $line }
+    }
+    return $lines[0]
+}
+
+function Get-WingetFailureMessage {
+    param($Result)
+
+    if ($Result.Diagnostic) {
+        return "winget termino con codigo $($Result.ExitCode): $($Result.Diagnostic)"
+    }
+    return "winget termino con codigo $($Result.ExitCode)."
 }
 
 function Invoke-WingetCommand {
@@ -155,14 +241,25 @@ function Invoke-WingetCommand {
 
     Write-LogLine ("winget " + ($Arguments -join ' ')) 'INFO'
 
-    $rawOutput = @(& winget @Arguments 2>&1 | ForEach-Object { [string]$_ })
-    $exitCode = $LASTEXITCODE
+    # Con ErrorActionPreference=Stop, el stderr de un ejecutable nativo puede
+    # convertirse en un error terminante al redirigirlo con 2>&1.
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $rawOutput = @(& winget @Arguments 2>&1 | ForEach-Object { [string]$_ })
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
+
     $output = Remove-AnsiSequences (($rawOutput | Out-String).Trim())
+    $diagnostic = Get-WingetDiagnosticLine -Output $output
 
     if (-not $Quiet -and $output) {
-        $lines = @($output -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
+        $lines = @($output -split "`n" | Where-Object { $_.Trim() -ne '' })
         if ($lines.Count -gt 40) {
-            $lines = $lines[($lines.Count - 40)..($lines.Count - 1)]
+            # Conserva el inicio (donde winget suele explicar el error) y el final.
+            $lines = @($lines[0..4]) + @('...') + @($lines[($lines.Count - 35)..($lines.Count - 1)])
         }
         foreach ($line in $lines) {
             Write-LogLine ('  ' + $line.TrimEnd()) 'INFO'
@@ -170,8 +267,9 @@ function Invoke-WingetCommand {
     }
 
     return [pscustomobject]@{
-        ExitCode = $exitCode
-        Output   = $output
+        ExitCode   = $exitCode
+        Output     = $output
+        Diagnostic = $diagnostic
     }
 }
 
@@ -215,17 +313,15 @@ function Invoke-WingetInstallOrUpgrade {
         Write-LogLine "winget: $($File.name) ya esta en la ultima version." 'OK'
         return 'uptodate'
     }
-    if ($result.ExitCode -eq -1978335135) {
+
+    # PACKAGE_ALREADY_INSTALLED (0x8A150061) / INSTALL_ALREADY_INSTALLED (0x8A15010D).
+    if (@(-1978335135, -1978334963) -contains $result.ExitCode) {
         Write-LogLine "winget: $($File.name) ya estaba instalado." 'OK'
         return 'uptodate'
     }
 
-    if (Resolve-InstalledPath -File $File) {
-        Write-LogLine "winget termino con codigo $($result.ExitCode), pero '$($File.name)' esta instalado." 'WARN'
-        return 'ok'
-    }
-
-    throw "winget termino con codigo $($result.ExitCode)."
+    # Un fallo real no se considera exito aunque la ruta configurada ya exista.
+    throw (Get-WingetFailureMessage -Result $result)
 }
 
 function Invoke-WingetUpgradeFile {
@@ -252,7 +348,7 @@ function Invoke-WingetUpgradeFile {
     if ($result.ExitCode -eq -1978335189) { return 'uptodate' }
     if ($result.ExitCode -eq -1978335212) { return 'skipped' }
 
-    throw "winget termino con codigo $($result.ExitCode)."
+    throw (Get-WingetFailureMessage -Result $result)
 }
 
 function Invoke-WingetUninstallFile {
@@ -280,5 +376,77 @@ function Invoke-WingetUninstallFile {
         return $false
     }
 
-    throw "winget termino con codigo $($result.ExitCode)."
+    throw (Get-WingetFailureMessage -Result $result)
+}
+
+function Get-WingetUpgradeCount {
+    param([string]$Output)
+
+    if (-not $Output) { return 0 }
+
+    $match = [regex]::Match($Output, '(?im)^\s*(\d+)\s+upgrades?\s+available')
+    if ($match.Success) { return [int]$match.Groups[1].Value }
+    return 0
+}
+
+function Invoke-ElvisWingetUpgradeAll {
+    param(
+        [switch]$DryRun,
+        [scriptblock]$OnProgress
+    )
+
+    if (-not (Test-WingetAvailable)) {
+        throw 'winget no esta disponible en este equipo.'
+    }
+
+    if ($OnProgress) { & $OnProgress 5 'Buscando actualizaciones con winget...' | Out-Null }
+
+    # Consulta de solo lectura: no instala nada.
+    $listResult = Invoke-WingetCommand -Arguments @(
+        'upgrade',
+        '--include-unknown',
+        '--accept-source-agreements',
+        '--disable-interactivity'
+    )
+
+    $pending = Get-WingetUpgradeCount -Output $listResult.Output
+
+    $summary = [pscustomobject]@{
+        Pending  = $pending
+        ExitCode = $listResult.ExitCode
+        DryRun   = [bool]$DryRun
+    }
+
+    if ($DryRun) { return $summary }
+
+    if ($pending -eq 0) {
+        return $summary
+    }
+
+    if ($OnProgress) { & $OnProgress 25 'Actualizando aplicaciones con winget...' | Out-Null }
+
+    $result = Invoke-WingetCommand -Arguments @(
+        'upgrade',
+        '--all',
+        '--include-unknown',
+        '--silent',
+        '--accept-package-agreements',
+        '--accept-source-agreements',
+        '--disable-interactivity'
+    )
+    $summary.ExitCode = $result.ExitCode
+
+    if ($result.ExitCode -eq 0) {
+        Write-LogLine 'winget: actualizacion masiva completada.' 'OK'
+        return $summary
+    }
+
+    # UPDATE_NOT_APPLICABLE / NO_APPLICATIONS_FOUND: no queda nada por actualizar.
+    if (@(-1978335189, -1978335212) -contains $result.ExitCode) {
+        Write-LogLine 'winget: no quedan actualizaciones aplicables.' 'OK'
+        $summary.Pending = 0
+        return $summary
+    }
+
+    throw (Get-WingetFailureMessage -Result $result)
 }

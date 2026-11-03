@@ -48,6 +48,8 @@ function Start-ElevatedProcess {
     if ($ApplyOnly) { $arguments.Add('-ApplyOnly') }
     if ($UndoTweaks) { $arguments.Add('-UndoTweaks') }
     if ($Upgrade) { $arguments.Add('-Upgrade') }
+    if ($UpgradeAll) { $arguments.Add('-UpgradeAll') }
+    if ($WindowsUpdate) { $arguments.Add('-WindowsUpdate') }
     if ($Uninstall) { $arguments.Add('-Uninstall') }
     if ($ProgressFile) { $arguments.Add('-ProgressFile'); $arguments.Add(('"{0}"' -f $ProgressFile)) }
     if ($CancelFile) { $arguments.Add('-CancelFile'); $arguments.Add(('"{0}"' -f $CancelFile)) }
